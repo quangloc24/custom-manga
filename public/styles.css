@@ -420,31 +420,33 @@ body {
     order: unset;
   }
 
-  /* Specific sizing */
-  .chapter-select {
-    flex: 1 1 auto; /* Take up remaining space */
-    width: auto;
-    max-width: none;
-    height: 36px;
-    padding: 0 10px;
-    background-position: right 0.2rem center;
-    font-size: 0.8rem;
-    text-overflow: ellipsis;
-  }
-
-  /* Hide text labels on mobile */
-  .btn-text {
-    display: none;
+  /* Button styling reset for icon-only */
+  .nav-btn.secondary {
+    background: transparent;
+    border: 1px solid transparent; /* Ghost style */
+    color: var(--text-secondary);
   }
   
-  .btn-icon {
-    font-size: 1.1rem;
-    line-height: 1;
+  .nav-btn.secondary:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: none;
   }
 
-  /* Button styling reset for icon-only */
+  /* Specific styling for the chapter select in toolbar */
+  .chapter-select {
+    background-color: rgba(255, 255, 255, 0.05); /* Subtle background */
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    height: 36px;
+    padding: 0 10px;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+  }
+
   .nav-btn {
-    padding: 8px; /* Square-ish aspect */
+    padding: 0; /* Clear padding for flex centering */
     width: 36px;
     height: 36px;
     display: flex;
@@ -456,13 +458,6 @@ body {
   /* Hide Reload/Top on mobile toolbar if too cramped, or keep as icon */
   #reloadBtn, #topBtn {
     display: none; /* Hide reload on mobile bar to save space */
-  }
-
-  .chapter-select {
-    padding: 8px 12px;
-    font-size: 0.85rem;
-    height: 38px; /* Match button visual height approximately */
-    background-position: right 0.5rem center; /* Adjust arrow position */
   }
 
   .images-container {

@@ -379,58 +379,55 @@
     }
 
     .meta-grid {
-        display: flex; /* Changed from grid to flex for better centering */
-        flex-wrap: wrap;
-        justify-content: center;
-        gap: 15px;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px 15px; /* Row gap 12px, Col gap 15px */
         width: 100%;
-        margin-bottom: 10px;
+        margin-bottom: 20px;
+        text-align: left; /* Align text left for better readability in grid */
     }
 
     .meta-item {
-        align-items: center;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start; /* Align label/value to left */
+        overflow: hidden; /* Prevent spill */
+    }
+
+    /* Author and Artist span full width */
+    .meta-item:nth-child(1), /* Author */
+    .meta-item:nth-child(2) { /* Artist */
+        grid-column: 1 / -1;
     }
     
+    /* Ensure values break if too long */
+    .meta-value {
+        word-break: break-word;
+        line-height: 1.4;
+    }
+
     /* Tags cleaning */
     .tags-section {
-        justify-content: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center; /* Center tags section overall */
         width: 100%;
+        gap: 15px;
     }
+    
     .tag-group {
+        justify-content: center;
+        flex-direction: column; /* Stack Label and Tags */
+        align-items: center;
+        width: 100%;
+        gap: 8px;
+    }
+    
+    .tags {
         justify-content: center;
     }
 
     /* Start Reading Button Container */
-    #startReadingContainer {
-        width: 100%;
-        margin-top: 10px;
-        display: flex;
-        justify-content: center;
-        gap: 10px;
-    }
-
-    .start-reading-btn {
-        background: #2563eb; /* Stong Blue */
-        color: white;
-        border: none;
-        padding: 12px 30px;
-        border-radius: 50px; /* Pill shape */
-        font-weight: 700;
-        font-size: 1rem;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);
-        cursor: pointer;
-        width: 100%;
-        max-width: 280px;
-        justify-content: center;
-    }
-    
-    .start-reading-btn:hover {
-        background: #1d4ed8;
-        transform: translateY(-2px);
-    }
 
     /* Only show update details if needed, usually hiding it is cleaner for casual users */
     #scrapeDetailsBtn {
@@ -441,5 +438,79 @@
         margin-top: 15px;
         font-size: 0.8rem;
         width: auto;
+    }
+}
+
+/* Start Reading Button - Global Styles */
+#startReadingContainer {
+    width: 100%;
+    margin-top: 20px;
+    display: flex;
+    justify-content: flex-start; /* Left align on desktop */
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap; /* Allow wrapping on small screens */
+}
+
+/* Primary Action: Start Reading */
+.start-reading-btn {
+    background: #2563eb; 
+    color: white;
+    border: none;
+    padding: 12px 30px;
+    border-radius: 50px; 
+    font-weight: 700;
+    font-size: 1rem;
+    display: flex; /* Flex is set by JS, but this is default */
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);
+    cursor: pointer;
+    min-width: 180px;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.start-reading-btn:hover {
+    background: #1d4ed8;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(37, 99, 235, 0.5);
+}
+
+/* Secondary Action: Ghost Button (Update Details) */
+.ghost-btn {
+    background: transparent !important; /* Override standard action-btn gradient */
+    border: 1.5px solid var(--border-color) !important;
+    color: var(--text-secondary) !important;
+    box-shadow: none !important;
+    padding: 11px 24px; /* Match height roughy */
+    font-weight: 600;
+    border-radius: 50px; /* Match pill shape */
+}
+
+.ghost-btn:hover {
+    border-color: var(--accent-primary) !important;
+    color: var(--accent-primary) !important;
+    background: rgba(99, 102, 241, 0.1) !important;
+    transform: translateY(-2px);
+}
+
+/* Mobile overrides */
+@media (max-width: 768px) {
+    #startReadingContainer {
+        justify-content: center; /* Center on mobile */
+        flex-direction: column; /* Stack on mobile */
+        width: 100%;
+    }
+    
+    .start-reading-btn {
+        width: 100%;
+        max-width: 280px;
+    }
+
+    .ghost-btn {
+        width: 100%;
+        max-width: 280px;
+        justify-content: center;
     }
 }
