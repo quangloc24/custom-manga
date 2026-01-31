@@ -7,11 +7,11 @@ const mangaId = urlParams.get("id");
 // DOM Elements
 const loadingContainer = document.getElementById("loadingContainer");
 const mangaDetail = document.getElementById("mangaDetail");
-const mangaCover = document.getElementById("mangaCover");
 const mangaTitle = document.getElementById("mangaTitle");
 const altTitles = document.getElementById("altTitles");
+const thumbnail = document.getElementById("mangaThumbnail");
 const author = document.getElementById("author");
-const artist = document.getElementById("artist");
+const mangaType = document.getElementById("mangaType");
 const status = document.getElementById("status");
 const language = document.getElementById("language");
 const genres = document.getElementById("genres");
@@ -21,6 +21,7 @@ const synopsis = document.getElementById("synopsis");
 const chaptersList = document.getElementById("chaptersList");
 const chapterCount = document.getElementById("chapterCount");
 const scrapeDetailsBtn = document.getElementById("scrapeDetailsBtn");
+const providerFilter = document.getElementById("providerFilter");
 
 // Load manga details on page load
 window.addEventListener("load", loadMangaDetails);
@@ -91,6 +92,22 @@ async function loadMangaDetails() {
     }
 
     const manga = await response.json();
+
+    // Check if we have full details (e.g. chapters).
+    // Homepage scrape only gives title/thumbnail.
+    // MongoDB model has 'details' object.
+    if (
+      !manga.details ||
+      !manga.details.chapters ||
+      manga.details.chapters.length === 0
+    ) {
+      console.log(
+        "Manga found but has no chapters/details, triggering auto-scrape...",
+      );
+      await autoScrapeMangaDetails();
+      return;
+    }
+
     displayMangaDetails(manga);
   } catch (error) {
     console.error("Error loading manga:", error);
@@ -130,41 +147,65 @@ function displayMangaDetails(manga) {
   mangaDetail.style.display = "block";
 
   // Cover and title
-  mangaCover.src = manga.thumbnail || "";
-  mangaCover.alt = manga.title;
+  thumbnail.src = manga.thumbnail;
+  thumbnail.alt = manga.title;
   mangaTitle.textContent = manga.title;
 
-  // Alternative titles
+  // Alt titles - display all of them on separate lines
   if (manga.altTitles && manga.altTitles.length > 0) {
-    altTitles.textContent = manga.altTitles.slice(0, 3).join(" • ");
+    altTitles.style.display = "block";
+    altTitles.textContent = manga.altTitles.join(" / ");
   }
 
-  // Metadata
-  author.textContent = manga.author?.join(", ") || "Unknown";
-  artist.textContent = manga.artist?.join(", ") || "Unknown";
-  status.textContent = manga.status || "Unknown";
-  status.className = `meta-value status-badge status-${manga.status}`;
-  language.textContent = manga.originalLanguage?.toUpperCase() || "Unknown";
+  // Metadata from details
+  const details = manga.details || {};
+
+  // Author
+  const authors = details.authors || [];
+  author.textContent = authors.join(", ") || "Unknown";
+
+  // Artist
+  const artists = details.artists || [];
+  artist.textContent = artists.join(", ") || "Unknown";
+
+  // Type (Manhwa, Manga, Manhua, etc.)
+  const type =
+    details.mangaType ||
+    (details.originalLanguage === "Korean"
+      ? "Manhwa"
+      : details.originalLanguage === "Chinese"
+        ? "Manhua"
+        : details.originalLanguage === "Japanese"
+          ? "Manga"
+          : "Unknown");
+  mangaType.textContent = type;
+
+  // Status
+  status.textContent = details.status || "Unknown";
+  status.className = `meta-value status-badge status-${(details.status || "").toLowerCase().replace(/\s+/g, "-")}`;
+
+  // Language
+  language.textContent = (details.originalLanguage || "Unknown").toUpperCase();
 
   // Tags
-  displayTags(genres, manga.genres);
-  displayTags(themes, manga.themes);
-  displayTags(demographic, manga.demographic);
+  displayTags(genres, details.genres);
+  displayTags(themes, details.themes || []);
+  displayTags(demographic, details.demographic || []);
 
-  // Synopsis - normalize spacing (replace multiple newlines with single breaks)
-  const synopsisText = manga.synopsis
-    ? manga.synopsis
-        .replace(/\n\n+/g, "<br><br>") // Multiple newlines → double break (paragraph)
-        .replace(/\n/g, " ") // Single newlines → space (same paragraph)
-    : "No synopsis available.";
-  synopsis.innerHTML = synopsisText;
+  // Synopsis - preserve line breaks properly
+  const synopsisText =
+    details.description || details.synopsis || "No synopsis available.";
+  synopsis.innerHTML = synopsisText
+    .replace(/\n\n+/g, "<br><br>")
+    .replace(/\n/g, "<br>");
 
-  // Add show more/less functionality if synopsis is long
+  // Add show more/less functionality
   addSynopsisToggle(synopsis, synopsisText);
 
   // Chapters
-  displayChapters(manga.chapters || []);
-  chapterCount.textContent = manga.totalChapters || 0;
+  displayChapters(details.chapters || []);
+  chapterCount.textContent =
+    details.totalChapters || (details.chapters ? details.chapters.length : 0);
 }
 
 function addSynopsisToggle(synopsisElement, fullText) {
@@ -469,16 +510,149 @@ async function scrapeMangaDetails() {
     const result = await response.json();
 
     if (result.success) {
-      alert("Successfully updated manga details!");
+      toast.success("Successfully updated manga details!");
       await loadMangaDetails();
     } else {
-      alert(`Error: ${result.error}`);
+      toast.error(`Error: ${result.error}`);
     }
   } catch (error) {
     console.error("Scrape error:", error);
-    alert("Failed to scrape manga details");
+    toast.error("Failed to scrape manga details");
   } finally {
     scrapeDetailsBtn.disabled = false;
     scrapeDetailsBtn.textContent = "📥 Update Details";
   }
 }
+// --- User Actions ---
+
+const userActionsDiv = document.getElementById("userActions");
+const favoriteBtn = document.getElementById("favoriteBtn");
+const favIcon = document.getElementById("favIcon");
+const statusSelect = document.getElementById("statusSelect");
+const ratingSelect = document.getElementById("ratingSelect");
+const userNote = document.getElementById("userNote");
+const saveNoteBtn = document.getElementById("saveNoteBtn");
+const addToListBtn = document.getElementById("addToListBtn");
+
+// Initialize User Actions
+function initUserActions() {
+  if (typeof auth !== "undefined" && auth.isLoggedIn()) {
+    userActionsDiv.style.display = "block";
+    loadUserMangaData();
+  } else {
+    userActionsDiv.style.display = "none";
+  }
+}
+
+// Listen for auth changes
+window.addEventListener("auth:login", initUserActions);
+window.addEventListener("auth:logout", initUserActions);
+// Also run on load
+window.addEventListener("load", initUserActions);
+
+async function loadUserMangaData() {
+  if (!auth.currentUser || !mangaId) return;
+
+  try {
+    const username = auth.currentUser.username;
+    // We fetching full user profile to get data.
+    // In a better API we would have /api/user/:username/manga/:mangaId
+    // But we have /api/user/:username which returns everything.
+    // Let's use that for now.
+    const response = await fetch(`/api/user/${username}`);
+    const result = await response.json();
+
+    if (result.success && result.user && result.user.mangaData) {
+      const data = result.user.mangaData[mangaId];
+      if (data) {
+        updateUserActionUI(data);
+      }
+    }
+  } catch (error) {
+    console.error("Error loading user data:", error);
+  }
+}
+
+function updateUserActionUI(data) {
+  // Favorite
+  if (data.favorite) {
+    favIcon.textContent = "❤️";
+    favoriteBtn.classList.add("active");
+  } else {
+    favIcon.textContent = "🤍";
+    favoriteBtn.classList.remove("active");
+  }
+
+  // Status
+  if (data.status) {
+    statusSelect.value = data.status;
+  }
+
+  // Rating
+  if (data.rating) {
+    ratingSelect.value = data.rating;
+  }
+
+  // Note
+  if (data.note) {
+    userNote.value = data.note;
+  }
+}
+
+async function sendUserAction(action, value) {
+  if (!auth.currentUser) return;
+
+  try {
+    const response = await fetch("/api/user/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: auth.currentUser.username,
+        mangaId: mangaId,
+        action: action,
+        value: value,
+      }),
+    });
+    const result = await response.json();
+    if (result.success) {
+      // UI update (optimistic was already done for some, but good to confirm)
+      console.log(`Action ${action} saved`);
+    } else {
+      alert(`Failed to save: ${result.error}`);
+    }
+  } catch (error) {
+    console.error("Action error:", error);
+    alert("Network error saving action");
+  }
+}
+
+// Event Listeners
+
+favoriteBtn.addEventListener("click", () => {
+  const isFav = favIcon.textContent === "❤️";
+  const newState = !isFav;
+
+  // Optimistic UI update
+  favIcon.textContent = newState ? "❤️" : "🤍";
+  if (newState) favoriteBtn.classList.add("active");
+  else favoriteBtn.classList.remove("active");
+
+  sendUserAction("favorite", newState);
+});
+
+statusSelect.addEventListener("change", (e) => {
+  sendUserAction("status", e.target.value);
+});
+
+ratingSelect.addEventListener("change", (e) => {
+  sendUserAction("rating", e.target.value);
+});
+
+saveNoteBtn.addEventListener("click", () => {
+  sendUserAction("note", userNote.value);
+  const originalText = saveNoteBtn.textContent;
+  saveNoteBtn.textContent = "Saved!";
+  setTimeout(() => (saveNoteBtn.textContent = originalText), 2000);
+});
+
+// Custom list functionality moved to list-modal.js

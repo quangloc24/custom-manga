@@ -11,21 +11,29 @@ const ChapterDownloadManager = require("./utils/chapter-download-manager");
 const AutoUpdater = require("./utils/auto-updater");
 
 const app = express();
+const mongoose = require("mongoose");
 const PORT = process.env.PORT || 3000;
 
-// Initialize scrapers and data manager
+// Connect to MongoDB
+mongoose
+  .connect(process.env.MONGODB_URI)
+  .then(() => console.log("✅ Connected to MongoDB"))
+  .catch((err) => console.error("❌ MongoDB connection error:", err));
+
+// Initialize scrapers and managers
 const scraper = new MangaScraper();
 const homepageScraper = new HomepageScraper();
 const titleScraper = new TitleScraper();
 const dataManager = new DataManager();
 const downloadManager = new ChapterDownloadManager();
+// USER MANAGER
+const UserManager = require("./utils/user-manager");
+const userManager = new UserManager();
 const autoUpdater = new AutoUpdater(titleScraper, dataManager);
 
-// Run startup migration to convert old relative times to timestamps
-dataManager.migrateAllManga();
-
-// Sync all manga details to library (fixes manually added manga)
-dataManager.syncDetailsToLibrary();
+// Remove file-based cache syncing as we use DB now (or implement DB migration here if preferred)
+// dataManager.migrateAllManga();
+// dataManager.syncDetailsToLibrary();
 
 // Middleware
 app.use(cors());
@@ -190,9 +198,9 @@ app.get("/api/health", (req, res) => {
 });
 
 // Get manga library
-app.get("/api/library", (req, res) => {
+app.get("/api/library", async (req, res) => {
   try {
-    const library = dataManager.loadLibrary();
+    const library = await dataManager.loadLibrary();
     res.json(library);
   } catch (error) {
     console.error("Library error:", error);
@@ -201,10 +209,10 @@ app.get("/api/library", (req, res) => {
 });
 
 // Get manga details
-app.get("/api/manga/:id", (req, res) => {
+app.get("/api/manga/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const details = dataManager.loadMangaDetails(id);
+    const details = await dataManager.loadMangaDetails(id);
 
     if (!details) {
       return res.status(404).json({ error: "Manga not found" });
@@ -223,9 +231,14 @@ app.post("/api/scrape/homepage", async (req, res) => {
     console.log("Scraping homepage...");
     const result = await homepageScraper.scrapeHomepage();
 
-    if (result.success) {
-      dataManager.saveLibrary(result.mangas);
-      res.json({ success: true, count: result.mangas.length });
+    if (result.success && result.mangas) {
+      // Save each manga to DB (safe upsert via saveLibrary)
+      await dataManager.saveLibrary(result.mangas);
+      res.json({
+        success: true,
+        count: result.mangas.length,
+        message: "Homepage scraped and library updated",
+      });
     } else {
       res.status(500).json({ success: false, error: result.error });
     }
@@ -258,25 +271,17 @@ app.post("/api/add-manga", async (req, res) => {
 
     const mangaId = urlMatch[1];
 
-    // Check if manga already exists in library or details
-    const library = dataManager.loadLibrary();
-    const existingInLibrary = library.mangas?.find((m) => m.id === mangaId);
-    const existingDetails = dataManager.loadMangaDetails(mangaId);
+    // Check if manga already exists
+    const existingDetails = await dataManager.loadMangaDetails(mangaId);
 
-    if (existingInLibrary || existingDetails) {
-      // If in library but no details, scrape details
-      if (existingInLibrary && !existingDetails) {
-        console.log(`Manga in library but no details, scraping: ${mangaId}`);
-        // Continue to scrape details below
-      } else {
-        return res.json({
-          success: true,
-          data: existingDetails || existingInLibrary,
-          mangaId,
-          alreadyExists: true,
-          message: "Manga already exists in library",
-        });
-      }
+    if (existingDetails) {
+      return res.json({
+        success: true,
+        data: existingDetails,
+        mangaId,
+        alreadyExists: true,
+        message: "Manga already exists in library",
+      });
     }
 
     console.log(`Adding manga: ${mangaId}`);
@@ -285,25 +290,8 @@ app.post("/api/add-manga", async (req, res) => {
     const result = await titleScraper.scrapeMangaDetails(url);
 
     if (result.success) {
-      // Save to details
-      dataManager.saveMangaDetails(mangaId, result.data);
-
-      // Add to library if not already there
-      const library = dataManager.loadLibrary();
-      const existingInLibrary = library.mangas?.find((m) => m.id === mangaId);
-
-      if (!existingInLibrary) {
-        const newManga = {
-          id: mangaId,
-          title: result.data.title,
-          thumbnail: result.data.thumbnail,
-          latestChapter:
-            result.data.totalChapters || result.data.chapters?.[0]?.number,
-        };
-
-        const updatedMangas = [...(library.mangas || []), newManga];
-        dataManager.saveLibrary(updatedMangas);
-      }
+      // Save to details (MongoDB)
+      await dataManager.saveMangaDetails(mangaId, result.data);
 
       res.json({ success: true, data: result.data, mangaId });
     } else {
@@ -315,7 +303,7 @@ app.post("/api/add-manga", async (req, res) => {
   }
 });
 
-// Scrape manga details
+// Scrape manga details (Refresh)
 app.post("/api/scrape/manga/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -325,7 +313,7 @@ app.post("/api/scrape/manga/:id", async (req, res) => {
     const result = await titleScraper.scrapeMangaDetails(url);
 
     if (result.success) {
-      dataManager.saveMangaDetails(id, result.data);
+      await dataManager.saveMangaDetails(id, result.data);
       res.json({ success: true, data: result.data });
     } else {
       res.status(500).json({ success: false, error: result.error });
@@ -408,6 +396,107 @@ app.get("/api/download/status/:mangaId/:provider/:chapterId", (req, res) => {
     console.error("Status check error:", error);
     res.status(500).json({ error: error.message });
   }
+});
+
+// --- User / Auth Routes ---
+
+// Register
+app.post("/api/auth/register", async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ error: "Username and password required" });
+  }
+  const result = await userManager.register(username, password);
+  res.json(result);
+});
+
+// Login
+app.post("/api/auth/login", async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ error: "Username and password required" });
+  }
+  const result = await userManager.login(username, password);
+  res.json(result);
+});
+
+// Get User Profile (Data sync)
+app.get("/api/user/:username", async (req, res) => {
+  const { username } = req.params;
+  const user = await userManager.getUser(username);
+  if (user) {
+    res.json({ success: true, user });
+  } else {
+    res.status(404).json({ success: false, error: "User not found" });
+  }
+});
+
+// Get User Custom Lists
+app.get("/api/user/:username/lists", async (req, res) => {
+  const { username } = req.params;
+  const user = await userManager.getUser(username);
+  if (user) {
+    // Convert Map to object for JSON
+    const lists = {};
+    if (user.customLists) {
+      for (const [key, value] of user.customLists) {
+        lists[key] = value;
+      }
+    }
+    res.json({ success: true, lists });
+  } else {
+    res.status(404).json({ success: false, error: "User not found" });
+  }
+});
+
+// Update Manga Action (Favorite, Status, Rating, Note)
+app.post("/api/user/action", async (req, res) => {
+  const { username, mangaId, action, value } = req.body;
+  if (!username || !mangaId || !action) {
+    return res.status(400).json({ error: "Missing parameters" });
+  }
+  // Security note: In a real app, validate session/token here.
+  // For this MVP, we trust the client provided username if strictly managed by frontend.
+
+  const result = await userManager.updateUserAction(
+    username,
+    mangaId,
+    action,
+    value,
+  );
+  res.json(result);
+});
+
+// List Management
+app.post("/api/user/list", async (req, res) => {
+  const { username, action, listName, mangaId } = req.body;
+  // action: 'create', 'delete', 'add', 'remove'
+
+  if (!username || !action || !listName) {
+    return res.status(400).json({ error: "Missing parameters" });
+  }
+
+  let result;
+  switch (action) {
+    case "create":
+      result = await userManager.createList(username, listName);
+      break;
+    case "delete":
+      result = await userManager.deleteList(username, listName);
+      break;
+    case "add":
+      if (!mangaId) return res.status(400).json({ error: "Manga ID required" });
+      result = await userManager.addToList(username, listName, mangaId);
+      break;
+    case "remove":
+      if (!mangaId) return res.status(400).json({ error: "Manga ID required" });
+      result = await userManager.removeFromList(username, listName, mangaId);
+      break;
+    default:
+      return res.status(400).json({ error: "Invalid action" });
+  }
+
+  res.json(result);
 });
 
 // Serve cached chapter images

@@ -23,13 +23,16 @@ class TitleScraper {
       const html = response.data;
       const $ = cheerio.load(html);
 
-      // Extract manga ID from URL
+      // Extract manga ID from URL (full slug and short ID)
       const idMatch = url.match(/\/title\/([^\/]+)/);
-      const mangaId = idMatch ? idMatch[1] : null;
+      const mangaSlug = idMatch ? idMatch[1] : null;
+
+      // Extract short manga ID for API (e.g., "rm2xv" from "rm2xv-the-grand-dukes...")
+      const shortId = mangaSlug ? mangaSlug.split("-")[0] : null;
 
       // Initialize manga data
       let mangaData = {
-        id: mangaId,
+        id: mangaSlug,
         title: "Unknown",
         altTitles: [],
         synopsis: "",
@@ -145,8 +148,29 @@ class TitleScraper {
         }
       }
 
-      // Extract chapters using Puppeteer (chapters are loaded dynamically)
-      const chapters = await this.extractChaptersWithPuppeteer(url, mangaId);
+      // Extract manga type directly from the type link
+      const typeLink = $(
+        'a[href*="types=manhwa"], a[href*="types=manga"], a[href*="types=manhua"]',
+      ).first();
+      if (typeLink.length > 0) {
+        const typeHref = typeLink.attr("href") || "";
+        if (typeHref.includes("manhwa")) mangaData.mangaType = "Manhwa";
+        else if (typeHref.includes("manhua")) mangaData.mangaType = "Manhua";
+        else if (typeHref.includes("manga")) mangaData.mangaType = "Manga";
+      } else {
+        // Fallback to inferring from language if type link not found
+        mangaData.mangaType =
+          mangaData.originalLanguage === "Korean"
+            ? "Manhwa"
+            : mangaData.originalLanguage === "Chinese"
+              ? "Manhua"
+              : mangaData.originalLanguage === "Japanese"
+                ? "Manga"
+                : "Unknown";
+      }
+
+      // Extract chapters using the API
+      const chapters = await this.extractChaptersViaAPI(shortId, mangaSlug);
 
       mangaData.chapters = chapters;
       mangaData.totalChapters = chapters.length;
@@ -171,325 +195,123 @@ class TitleScraper {
     }
   }
 
-  async extractChaptersWithPuppeteer(url, mangaId) {
-    const MAX_PAGES = 50; // Safety limit
-    let browser;
-    const allChapters = []; // Moved outside try block for error handler access
-
+  async extractChaptersViaAPI(shortId, fullSlug) {
     try {
-      browser = await puppeteer.launch({
-        headless: true,
-        args: ["--no-sandbox", "--disable-setuid-sandbox"],
-      });
+      console.log(`   Fetching chapters via API...`);
 
-      const page = await browser.newPage();
-      await page.setUserAgent(this.userAgent);
+      const allChapters = [];
+      const limit = 20;
+      let page = 1;
+      let hasMore = true;
 
-      console.log("   Loading page with Puppeteer...");
-      await page.goto(url, { waitUntil: "networkidle2", timeout: 30000 });
+      while (hasMore) {
+        const apiUrl = `https://comix.to/api/v2/manga/${shortId}/chapters?limit=${limit}&page=${page}&order[number]=desc`;
 
-      const seenChapterIds = new Set();
-      let currentPage = 1;
-      let hasNextPage = true;
-      let consecutiveZeroPages = 0; // Track consecutive pages with 0 new chapters
+        console.log(`   Fetching page ${page}...`);
 
-      while (hasNextPage && currentPage <= MAX_PAGES) {
-        console.log(`   Scraping chapter list page ${currentPage}...`);
-
-        // Wait for chapter links to appear on the current page
-        await page
-          .waitForSelector(`a[href*="/title/${mangaId}/"]`, { timeout: 10000 })
-          .catch(() => {});
-
-        // Extract chapters from the current page
-        const pageChapters = await this.scrapePageChapters(page, mangaId);
-
-        // Check if we found any new chapters
-        let newChaptersFound = 0;
-        pageChapters.forEach((ch) => {
-          if (!seenChapterIds.has(ch.id)) {
-            seenChapterIds.add(ch.id);
-            allChapters.push(ch);
-            newChaptersFound++;
-          }
+        const response = await axios.get(apiUrl, {
+          headers: {
+            "User-Agent": this.userAgent,
+            Referer: `https://comix.to/title/${fullSlug}`,
+          },
+          timeout: 15000,
         });
 
-        console.log(
-          `      Found ${newChaptersFound} new chapters on this page`,
-        );
+        const data = response.data;
 
-        // Track consecutive pages with 0 new chapters
-        if (newChaptersFound === 0) {
-          consecutiveZeroPages++;
-          if (consecutiveZeroPages >= 3) {
-            console.log(
-              "      No new chapters for 3 consecutive pages, stopping.",
-            );
-            hasNextPage = false;
+        if (data.status === 200 && data.result && data.result.items) {
+          const items = data.result.items;
+
+          console.log(`      Found ${items.length} chapters on page ${page}`);
+
+          if (items.length === 0) {
+            hasMore = false;
             break;
           }
-        } else {
-          consecutiveZeroPages = 0; // Reset counter when we find new chapters
-        }
 
-        // Try to navigate to the next page
-        const nextSelector = await page.evaluate((currentPage) => {
-          const links = Array.from(document.querySelectorAll("a, button, li")); // Added li for some paginations
-          const nextVal = (currentPage + 1).toString();
+          items.forEach((item) => {
+            const chapter = {
+              id: item.chapter_id.toString(),
+              number: parseFloat(item.number),
+              url: `https://comix.to/title/${fullSlug}/${item.chapter_id}-chapter-${item.number}`,
+              provider: item.scanlation_group?.name || "Official",
+              uploadDate: item.created_at
+                ? new Date(item.created_at * 1000).toISOString()
+                : null,
+              relativeTime: this.getRelativeTime(item.created_at),
+            };
 
-          const nextLink = links.find((l) => {
-            const text = l.textContent.trim();
-            const lowerText = text.toLowerCase();
-            const href = l.getAttribute("href") || "";
-            const ariaLabel = l.getAttribute("aria-label") || "";
-            const title = l.getAttribute("title") || "";
-
-            return (
-              text === nextVal ||
-              lowerText.includes("next") ||
-              lowerText.includes("older") ||
-              href.endsWith(`#${nextVal}`) ||
-              text === "›" ||
-              text === "»" ||
-              text === ">" ||
-              ariaLabel.toLowerCase().includes("next") ||
-              title.toLowerCase().includes("next")
-            );
+            allChapters.push(chapter);
           });
 
-          if (nextLink) {
-            nextLink.setAttribute("data-next-page", "true");
-            return '[data-next-page="true"]';
-          }
-          return null;
-        }, currentPage);
-
-        if (nextSelector) {
-          try {
-            const clickSuccess = await page.evaluate((selector) => {
-              const el = document.querySelector(selector);
-              if (el) {
-                el.click();
-                return true;
-              }
-              return false;
-            }, nextSelector);
-
-            if (!clickSuccess) {
-              console.log("      No next page button found, stopping.");
-              hasNextPage = false;
-              break;
-            }
-
-            // Cleanup the attribute
-            await page.evaluate((sel) => {
-              const el = document.querySelector(sel);
-              if (el) el.removeAttribute("data-next-page");
-            }, nextSelector);
-
-            // Wait for content to load
-            await new Promise((r) => setTimeout(r, 1500));
-            currentPage++;
-          } catch (clickError) {
-            console.error(
-              `      Error clicking next page: ${clickError.message}`,
-            );
-            hasNextPage = false;
+          // Check if there are more pages
+          if (items.length < limit) {
+            hasMore = false;
+          } else {
+            page++;
           }
         } else {
-          console.log("      No next page button found, stopping.");
-          hasNextPage = false;
+          hasMore = false;
         }
+
+        // Small delay to avoid rate limiting
+        await new Promise((r) => setTimeout(r, 200));
       }
-
-      await browser.close();
-
-      const chapters = allChapters.sort((a, b) => {
-        if (b.number !== a.number) return b.number - a.number;
-        return b.id.localeCompare(a.id);
-      });
 
       console.log(
-        `   Found ${chapters.length} total chapters across ${currentPage} pages`,
+        `   ✅ Fetched ${allChapters.length} total chapters from ${page} pages`,
       );
-      return chapters;
+
+      return allChapters;
     } catch (error) {
-      if (browser) await browser.close();
-      console.error(
-        "   Error extracting chapters with Puppeteer:",
-        error.message,
-      );
-      // Return what we managed to collect before the error
-      return allChapters.sort((a, b) => {
-        if (b.number !== a.number) return b.number - a.number;
-        return b.id.localeCompare(a.id);
-      });
+      console.error(`   ❌ Error fetching chapters via API: ${error.message}`);
+      return [];
     }
   }
 
-  async navigateToPage(page, pageNum, mangaId, baseUrl = null) {
+  getRelativeTime(timestamp) {
+    if (!timestamp) return null;
+
     try {
-      if (baseUrl && pageNum > 1) {
-        // Direct navigation for new pages
-        await page.goto(baseUrl, { waitUntil: "networkidle2", timeout: 30000 });
-      }
+      // Convert Unix timestamp (seconds) to JavaScript Date
+      const date = new Date(timestamp * 1000);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
 
-      if (pageNum === 1) {
-        return true; // Already on page 1
-      }
+      // Less than 1 hour
+      if (diffMins < 60) return `${diffMins}m`;
 
-      // Click to the target page
-      for (let i = 1; i < pageNum; i++) {
-        const nextSelector = await page.evaluate((currentPage) => {
-          const links = Array.from(document.querySelectorAll("a, button"));
-          const nextVal = (currentPage + 1).toString();
-          const nextLink = links.find((l) => {
-            const text = l.textContent.trim();
-            const href = l.getAttribute("href") || "";
-            return (
-              text === nextVal ||
-              text.toLowerCase() === "next" ||
-              href.endsWith(`#${nextVal}`)
-            );
-          });
+      // Less than 1 day
+      if (diffHours < 24) return `${diffHours}h`;
 
-          if (nextLink) {
-            nextLink.setAttribute("data-next-page", "true");
-            return '[data-next-page="true"]';
-          }
-          return null;
-        }, i);
+      // Less than 30 days
+      if (diffDays < 30) return `${diffDays}d`;
 
-        if (!nextSelector) {
-          return false; // No next page button found
+      // 30 days or more - show months with remaining days
+      const diffMonths = Math.floor(diffDays / 30);
+      const remainingDays = diffDays % 30;
+
+      // Less than 1 year
+      if (diffMonths < 12) {
+        if (remainingDays > 0) {
+          return `${diffMonths}mo, ${remainingDays}d`;
         }
-
-        const clickSuccess = await page.evaluate((selector) => {
-          const el = document.querySelector(selector);
-          if (el) {
-            el.click();
-            return true;
-          }
-          return false;
-        }, nextSelector);
-
-        if (!clickSuccess) {
-          return false;
-        }
-
-        // Cleanup and wait
-        await page.evaluate((sel) => {
-          const el = document.querySelector(sel);
-          if (el) el.removeAttribute("data-next-page");
-        }, nextSelector);
-
-        await new Promise((r) => setTimeout(r, 1500));
+        return `${diffMonths}mo`;
       }
 
-      return true;
-    } catch (error) {
-      console.error(
-        `      Error navigating to page ${pageNum}:`,
-        error.message,
-      );
-      return false;
+      // 1 year or more
+      const diffYears = Math.floor(diffDays / 365);
+      return `${diffYears}y`;
+    } catch (e) {
+      return null;
     }
   }
 
-  async scrapePageChapters(page, mangaId) {
-    return await page.evaluate((mangaId) => {
-      const chapterData = [];
-      const allLinks = Array.from(
-        document.querySelectorAll(`a[href*="/title/${mangaId}/"]`),
-      );
-
-      const chapterLinks = allLinks.filter((link) => {
-        const href = link.getAttribute("href");
-        return href && href.match(/\/title\/[^\/]+\/\d+-chapter-\d+/);
-      });
-
-      chapterLinks.forEach((link) => {
-        const href = link.getAttribute("href");
-        const match = href.match(/\/title\/[^\/]+\/(\d+)-chapter-(\d+)/);
-        if (!match) return;
-
-        const chapterId = match[1];
-        const chapterNum = parseInt(match[2]);
-        const parent = link.parentElement;
-        const grandparent = parent?.parentElement;
-
-        // Provider extraction
-        let provider = "Unknown";
-        if (grandparent) {
-          const links = Array.from(grandparent.querySelectorAll("a"));
-          const providerLink = links.find((l) => {
-            const h = l.getAttribute("href");
-            return (
-              h &&
-              h !== href &&
-              !h.includes(`/title/${mangaId}`) &&
-              !h.startsWith("#")
-            );
-          });
-          if (providerLink) provider = providerLink.textContent.trim();
-          else {
-            const providerEl = grandparent.querySelector(
-              '[class*="provider"], [class*="team"], [class*="scanlator"]',
-            );
-            if (providerEl) provider = providerEl.textContent.trim();
-            else {
-              // Final fallback to regex if DOM attributes fail
-              const containerText = grandparent.textContent || "";
-              const teamMatch = containerText.match(
-                /([A-Z][a-z]+\s+(?:Scans?|Comics?|Team|Alliance|Group)|ROKARI\s+COMICS|MagusManga|Official)/,
-              );
-              if (teamMatch) provider = teamMatch[1];
-            }
-          }
-        }
-
-        // Date extraction
-        let uploadDate = null;
-        let relativeTime = null;
-        const timeEl =
-          grandparent?.querySelector('[class*="time"]') ||
-          parent?.querySelector('[class*="time"]');
-        if (timeEl) {
-          relativeTime = timeEl.textContent.trim();
-          const attrTime = timeEl.getAttribute("datetime");
-          if (attrTime) uploadDate = attrTime;
-          else {
-            const now = new Date();
-            const dMatch = relativeTime.match(/^(\d+)(m|h|d|w|mo|y)$/);
-            if (dMatch) {
-              const amount = parseInt(dMatch[1]);
-              const unit = dMatch[2];
-              const date = new Date(now);
-              if (unit === "m") date.setMinutes(now.getMinutes() - amount);
-              else if (unit === "h") date.setHours(now.getHours() - amount);
-              else if (unit === "d") date.setDate(now.getDate() - amount);
-              else if (unit === "w") date.setDate(now.getDate() - amount * 7);
-              else if (unit === "mo") date.setMonth(now.getMonth() - amount);
-              else if (unit === "y")
-                date.setFullYear(now.getFullYear() - amount);
-              uploadDate = date.toISOString();
-            } else {
-              uploadDate = relativeTime;
-            }
-          }
-        }
-
-        chapterData.push({
-          id: chapterId,
-          number: chapterNum,
-          url: `https://comix.to${href}`,
-          provider: provider,
-          uploadDate: uploadDate,
-          relativeTime: relativeTime,
-        });
-      });
-      return chapterData;
-    }, mangaId);
+  async close() {
+    // Placeholder for cleanup
   }
 }
 

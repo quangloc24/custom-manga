@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Manga Library</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .auth-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 80vh;
+        }
+        .auth-card {
+            background: var(--bg-card);
+            padding: 40px;
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+        .auth-title {
+            font-size: 2rem;
+            margin-bottom: 20px;
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-weight: 700;
+        }
+        .auth-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .auth-input {
+            padding: 12px 15px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-primary);
+            font-size: 1rem;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+        .auth-input:focus {
+            border-color: var(--accent-primary);
+            background: rgba(99, 102, 241, 0.1);
+        }
+        .auth-btn {
+            padding: 12px;
+            border-radius: 8px;
+            border: none;
+            background: var(--accent-gradient);
+            color: white;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.3s ease;
+            margin-top: 10px;
+        }
+        .auth-btn:hover {
+            opacity: 0.9;
+        }
+        .auth-footer {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+        .auth-link {
+            color: var(--accent-primary);
+            text-decoration: none;
+            font-weight: 500;
+            cursor: pointer;
+        }
+        .error-msg {
+            color: var(--error);
+            font-size: 0.9rem;
+            margin-top: 10px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <a href="/" class="logo">📖 Manga Reader</a>
+                <nav class="nav">
+                    <a href="/" class="nav-link">Library</a>
+                </nav>
+            </div>
+        </header>
+
+        <div class="auth-container">
+            <div class="auth-card">
+                <h1 class="auth-title" id="formTitle">Login</h1>
+                <form class="auth-form" id="authForm">
+                    <input type="text" id="username" class="auth-input" placeholder="Username" required>
+                    <input type="password" id="password" class="auth-input" placeholder="Password" required>
+                    <button type="submit" class="auth-btn" id="submitBtn">Login</button>
+                </form>
+                <div class="error-msg" id="errorMsg"></div>
+                <div class="auth-footer">
+                    <span id="switchText">Don't have an account? </span>
+                    <span class="auth-link" id="switchBtn">Register</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/auth.js"></script>
+    <script>
+        const form = document.getElementById('authForm');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const submitBtn = document.getElementById('submitBtn');
+        const switchBtn = document.getElementById('switchBtn');
+        const switchText = document.getElementById('switchText');
+        const formTitle = document.getElementById('formTitle');
+        const errorMsg = document.getElementById('errorMsg');
+
+        let isLogin = true;
+
+        switchBtn.addEventListener('click', () => {
+            isLogin = !isLogin;
+            if (isLogin) {
+                formTitle.textContent = 'Login';
+                submitBtn.textContent = 'Login';
+                switchText.textContent = "Don't have an account? ";
+                switchBtn.textContent = 'Register';
+            } else {
+                formTitle.textContent = 'Register';
+                submitBtn.textContent = 'Register';
+                switchText.textContent = "Already have an account? ";
+                switchBtn.textContent = 'Login';
+            }
+            errorMsg.style.display = 'none';
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = usernameInput.value;
+            const password = passwordInput.value;
+            
+            errorMsg.style.display = 'none';
+            submitBtn.disabled = true;
+
+            let result;
+            if (isLogin) {
+                result = await auth.login(username, password);
+            } else {
+                result = await auth.register(username, password);
+            }
+
+            if (result.success) {
+                window.location.href = '/';
+            } else {
+                errorMsg.textContent = result.error;
+                errorMsg.style.display = 'block';
+                submitBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

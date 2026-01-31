@@ -1,6 +1,4 @@
 const cron = require("node-cron");
-const fs = require("fs");
-const path = require("path");
 
 class AutoUpdater {
   constructor(titleScraper, dataManager) {
@@ -68,39 +66,28 @@ class AutoUpdater {
     const startTime = Date.now();
 
     try {
-      const mangaDir = path.join(__dirname, "..", "data", "manga-details");
+      // Get only manga that have been fully scraped (user clicked "Update Details")
+      const allManga = await this.dataManager.getMangaForAutoUpdate();
 
-      // Check if manga directory exists
-      if (!fs.existsSync(mangaDir)) {
-        console.log("📂 No manga directory found, skipping update");
+      if (!allManga || allManga.length === 0) {
+        console.log("📚 No manga to update (no fully scraped manga found)");
         return;
       }
 
-      // Get all manga IDs from saved files
-      const files = fs.readdirSync(mangaDir);
-      const mangaIds = files
-        .filter((file) => file.endsWith(".json"))
-        .map((file) => file.replace(".json", ""));
-
-      if (mangaIds.length === 0) {
-        console.log("📚 No manga to update");
-        return;
-      }
-
-      console.log(`📚 Found ${mangaIds.length} manga to update`);
+      console.log(`📚 Found ${allManga.length} manga to update`);
 
       let successCount = 0;
       let errorCount = 0;
       let newChaptersTotal = 0;
 
-      for (const mangaId of mangaIds) {
+      for (const manga of allManga) {
         try {
+          const mangaId = manga.mangaId;
           console.log(`\n   Updating: ${mangaId}`);
           const url = `https://comix.to/title/${mangaId}`;
 
-          // Load existing data to compare
-          const existingData = this.dataManager.loadMangaDetails(mangaId);
-          const oldChapterCount = existingData?.totalChapters || 0;
+          // Get old chapter count
+          const oldChapterCount = manga.details?.totalChapters || 0;
 
           // Scrape fresh data
           const result = await this.titleScraper.scrapeMangaDetails(url);
@@ -110,7 +97,7 @@ class AutoUpdater {
             const newChapters = newChapterCount - oldChapterCount;
 
             // Save updated data
-            this.dataManager.saveMangaDetails(mangaId, result.data);
+            await this.dataManager.saveMangaDetails(mangaId, result.data);
 
             if (newChapters > 0) {
               console.log(

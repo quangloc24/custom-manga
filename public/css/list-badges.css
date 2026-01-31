@@ -1,0 +1,37 @@
+/* List Badge Display Styles */
+.current-lists-display {
+    margin-bottom: 16px;
+    padding: 14px 18px;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%);
+    border: 1.5px solid rgba(99, 102, 241, 0.2);
+    border-radius: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.lists-label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #a78bfa;
+}
+
+.list-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 14px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(99, 102, 241, 0.15) 100%);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #c4b5fd;
+    transition: all 0.3s ease;
+}
+
+.list-badge:hover {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.25) 0%, rgba(99, 102, 241, 0.25) 100%);
+    border-color: #8b5cf6;
+    transform: translateY(-1px);
+}

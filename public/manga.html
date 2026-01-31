@@ -6,6 +6,10 @@
     <title>Manga Details</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="css/manga-detail.css">
+    <link rel="stylesheet" href="css/user-actions.css">
+    <link rel="stylesheet" href="css/list-modal.css">
+    <link rel="stylesheet" href="css/list-badges.css">
+    <link rel="stylesheet" href="css/toast.css">
 </head>
 <body>
     <div class="container">
@@ -31,28 +35,32 @@
             <!-- Cover and Info Section -->
             <div class="manga-header">
                 <div class="manga-cover">
-                    <img id="mangaCover" src="" alt="Cover">
+                    <img id="mangaThumbnail" src="" alt="Cover">
                 </div>
                 <div class="manga-meta">
-                    <h1 id="mangaTitle" class="title"></h1>
-                    <div id="altTitles" class="alt-titles"></div>
+                    <h1 id="mangaTitle" class="title">Loading...</h1>
+                    <p id="altTitles" class="alt-titles"></p>
                     
                     <div class="meta-grid">
                         <div class="meta-item">
                             <span class="meta-label">Author:</span>
-                            <span id="author" class="meta-value"></span>
+                            <span id="author" class="meta-value">Unknown</span>
                         </div>
                         <div class="meta-item">
                             <span class="meta-label">Artist:</span>
-                            <span id="artist" class="meta-value"></span>
+                            <span id="artist" class="meta-value">Unknown</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Type:</span>
+                            <span id="mangaType" class="meta-value">Unknown</span>
                         </div>
                         <div class="meta-item">
                             <span class="meta-label">Status:</span>
-                            <span id="status" class="meta-value status-badge"></span>
+                            <span id="status" class="meta-value">Unknown</span>
                         </div>
                         <div class="meta-item">
                             <span class="meta-label">Language:</span>
-                            <span id="language" class="meta-value"></span>
+                            <span id="language" class="meta-value">UNKNOWN</span>
                         </div>
                     </div>
 
@@ -74,6 +82,51 @@
                     <button id="scrapeDetailsBtn" class="action-btn">
                         📥 Update Details
                     </button>
+
+                     <!-- User Actions (Hidden if not logged in) -->
+                     <div id="userActions" class="user-actions" style="display: none;">
+                        <h3>📚 My List</h3>
+                        
+                        <div class="action-row">
+                            <button id="favoriteBtn" class="action-btn">
+                                <span id="favIcon">🤍</span> <span>Favorite</span>
+                            </button>
+                            
+                            <select id="statusSelect" class="action-select">
+                                <option value="">📖 Reading Status</option>
+                                <option value="reading">📚 Reading</option>
+                                <option value="completed">✅ Completed</option>
+                                <option value="on_hold">⏸️ On Hold</option>
+                                <option value="dropped">❌ Dropped</option>
+                                <option value="plan_to_read">📌 Plan to Read</option>
+                            </select>
+
+                            <select id="ratingSelect" class="action-select">
+                                <option value="">⭐ Your Rating</option>
+                                <option value="10">(10) Masterpiece</option>
+                                <option value="9">(9) Great</option>
+                                <option value="8">(8) Very Good</option>
+                                <option value="7">(7) Good</option>
+                                <option value="6">(6) Fine</option>
+                                <option value="5">(5) Average</option>
+                                <option value="4">(4) Bad</option>
+                                <option value="3">(3) Very Bad</option>
+                                <option value="2">(2) Horrible</option>
+                                <option value="1">(1) Appalling</option>
+                            </select>
+                        </div>
+
+                        <div class="notes-group">
+                            <textarea id="userNote" placeholder="✍️ Add your personal notes about this manga..."></textarea>
+                            <button id="saveNoteBtn" class="save-note-btn">💾 Save Note</button>
+                        </div>
+
+                         <div class="custom-list-section">
+                            <button id="addToListBtn" class="custom-list-btn">
+                                ➕ Add to Custom List
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -98,6 +151,46 @@
         </footer>
     </div>
 
+    <!-- Custom List Modal -->
+    <div id="listModal" class="list-modal-overlay">
+        <div class="list-modal">
+            <div class="list-modal-header">
+                <h3 class="list-modal-title">📋 Custom Lists</h3>
+                <button class="list-modal-close" id="closeListModal">×</button>
+            </div>
+
+            <!-- Create New List -->
+            <div class="list-create-section">
+                <h4>✨ Create New List</h4>
+                <div class="list-create-input-group">
+                    <input type="text" id="newListInput" class="list-create-input" placeholder="Enter list name..." />
+                    <button id="createListBtn" class="list-create-btn">➕ Create</button>
+                </div>
+            </div>
+
+            <!-- Existing Lists -->
+            <div class="lists-section">
+                <h4 id="listsHeader">Your Lists</h4>
+                <div id="listItemsContainer" class="list-items">
+                    <!-- Lists will be dynamically inserted here -->
+                    <div class="empty-state" id="emptyState">
+                        <div class="empty-state-icon">📚</div>
+                        <p class="empty-state-text">No lists yet. Create your first list above!</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Actions -->
+            <div class="list-modal-actions">
+                <button id="saveListsBtn" class="list-modal-btn list-modal-btn-primary">💾 Save Changes</button>
+                <button id="cancelListsBtn" class="list-modal-btn list-modal-btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/toast.js"></script>
+    <script src="js/auth.js"></script>
     <script src="js/manga-detail.js"></script>
+    <script src="js/list-modal.js"></script>
 </body>
 </html>

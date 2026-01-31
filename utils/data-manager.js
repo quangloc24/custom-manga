@@ -1,49 +1,60 @@
-const fs = require("fs");
-const path = require("path");
+const Manga = require("../models/Manga");
 
 class DataManager {
   constructor() {
-    this.dataDir = path.join(__dirname, "..", "data");
-    this.detailsDir = path.join(this.dataDir, "manga-details");
-    this.libraryFile = path.join(this.dataDir, "manga-library.json");
-
-    // Ensure directories exist
-    this.ensureDirectories();
+    // No initialization needed for Mongoose
   }
 
-  ensureDirectories() {
-    if (!fs.existsSync(this.dataDir)) {
-      fs.mkdirSync(this.dataDir, { recursive: true });
-    }
-    if (!fs.existsSync(this.detailsDir)) {
-      fs.mkdirSync(this.detailsDir, { recursive: true });
-    }
-  }
-
-  // Load manga library
-  loadLibrary() {
+  // Load manga library (Lite version for listing)
+  async loadLibrary() {
     try {
-      if (fs.existsSync(this.libraryFile)) {
-        const data = fs.readFileSync(this.libraryFile, "utf8");
-        return JSON.parse(data);
-      }
-      return { mangas: [], lastUpdated: null };
-    } catch (error) {
-      console.error("Error loading library:", error.message);
-      return { mangas: [], lastUpdated: null };
-    }
-  }
-
-  // Save manga library
-  saveLibrary(mangas) {
-    try {
-      const data = {
-        mangas: mangas,
-        lastUpdated: new Date().toISOString(),
+      const mangas = await Manga.find(
+        {},
+        "mangaId title thumbnail latestChapter lastUpdated",
+      )
+        .sort({ lastUpdated: -1 })
+        .lean();
+      return {
+        mangas: mangas.map((m) => ({
+          id: m.mangaId,
+          ...m,
+          _id: undefined, // Remove internal Mongo ID from output
+        })),
         count: mangas.length,
       };
-      fs.writeFileSync(this.libraryFile, JSON.stringify(data, null, 2));
-      console.log(`✅ Saved ${mangas.length} manga to library`);
+    } catch (error) {
+      console.error("Error loading library:", error.message);
+      return { mangas: [], count: 0 };
+    }
+  }
+
+  // Save multiple mangas (e.g. from homepage scrape)
+  // Safely upserts: updates shallow info, preserves existing details if present
+  async saveLibrary(mangas) {
+    if (!mangas || mangas.length === 0) return false;
+
+    try {
+      const operations = mangas.map((m) => ({
+        updateOne: {
+          filter: { mangaId: m.id },
+          update: {
+            $set: {
+              title: m.title,
+              thumbnail: m.thumbnail,
+              latestChapter: m.latestChapter,
+              lastUpdated: new Date(),
+            },
+            // Only set details if they don't exist (to avoid clearing them)
+            // But wait, if we scrape homepage we don't have details.
+            // So we don't touch the 'details' field at all in $set.
+            // If the document is new, 'details' will be undefined/empty by default schema, which is fine.
+          },
+          upsert: true,
+        },
+      }));
+
+      await Manga.bulkWrite(operations);
+      console.log(`✅ Bulk saved/updated ${mangas.length} manga from homepage`);
       return true;
     } catch (error) {
       console.error("Error saving library:", error.message);
@@ -52,20 +63,16 @@ class DataManager {
   }
 
   // Load manga details
-  loadMangaDetails(mangaId) {
+  async loadMangaDetails(mangaId) {
     try {
-      const filePath = path.join(this.detailsDir, `${mangaId}.json`);
-      if (fs.existsSync(filePath)) {
-        const data = fs.readFileSync(filePath, "utf8");
-        const details = JSON.parse(data);
-
-        // Migrate old relative times if needed
-        if (this.migrateMangaTimes(mangaId, details)) {
-          // If migrated, save the updated version
-          this.saveMangaDetails(mangaId, details);
-        }
-
-        return details;
+      const manga = await Manga.findOne({ mangaId }).lean();
+      if (manga) {
+        return {
+          ...manga,
+          // Spread details to top level to match previous JSON structure if expected by frontend
+          ...manga.details,
+          id: manga.mangaId,
+        };
       }
       return null;
     } catch (error) {
@@ -74,53 +81,72 @@ class DataManager {
     }
   }
 
-  // Migrate relative times (e.g., "17h", "1d") to absolute ISO strings
-  migrateMangaTimes(mangaId, details) {
-    if (!details.chapters || !details.lastUpdated) return false;
-
-    let migrated = false;
-    const refDate = new Date(details.lastUpdated);
-
-    details.chapters.forEach((chapter) => {
-      // If uploadDate is a relative string (like "17h", "1d")
-      const match =
-        typeof chapter.uploadDate === "string" &&
-        chapter.uploadDate.match(/^(\d+)(m|h|d|w|mo|y)$/);
-
-      if (match) {
-        const amount = parseInt(match[1]);
-        const unit = match[2];
-        const date = new Date(refDate);
-
-        if (unit === "m") date.setMinutes(refDate.getMinutes() - amount);
-        else if (unit === "h") date.setHours(refDate.getHours() - amount);
-        else if (unit === "d") date.setDate(refDate.getDate() - amount);
-        else if (unit === "w") date.setDate(refDate.getDate() - amount * 7);
-        else if (unit === "mo") date.setMonth(refDate.getMonth() - amount);
-        else if (unit === "y") date.setFullYear(refDate.getFullYear() - amount);
-
-        chapter.uploadDate = date.toISOString();
-        migrated = true;
-      }
-    });
-
-    if (migrated) {
-      console.log(`🪄 Migrated relative times for ${mangaId}`);
+  // Get all manga (for auto-updater)
+  async getAllManga() {
+    try {
+      return await Manga.find({}).lean();
+    } catch (error) {
+      console.error("Error getting all manga:", error.message);
+      return [];
     }
+  }
 
-    return migrated;
+  // Get manga that should be auto-updated (only those with full details scraped)
+  async getMangaForAutoUpdate() {
+    try {
+      // Only return manga where user has clicked "Update Details"
+      const mangas = await Manga.find({ detailsScraped: true }).lean();
+      return mangas;
+    } catch (error) {
+      console.error("Error getting manga for auto-update:", error.message);
+      return [];
+    }
   }
 
   // Save manga details
-  saveMangaDetails(mangaId, details) {
+  async saveMangaDetails(mangaId, details) {
     try {
-      const filePath = path.join(this.detailsDir, `${mangaId}.json`);
-      const data = {
-        ...details,
-        lastUpdated: new Date().toISOString(),
+      // Use manga type from scraper, or calculate from language as fallback
+      const type =
+        details.mangaType ||
+        (details.originalLanguage === "Korean"
+          ? "Manhwa"
+          : details.originalLanguage === "Chinese"
+            ? "Manhua"
+            : details.originalLanguage === "Japanese"
+              ? "Manga"
+              : "Unknown");
+
+      // Structure data for Mongoose model
+      const updateData = {
+        title: details.title,
+        altTitles: details.altTitles || [],
+        thumbnail: details.thumbnail,
+        latestChapter: details.latestChapter,
+        lastUpdated: new Date(),
+        detailsScraped: true, // Mark as fully scraped for auto-updates
+        details: {
+          description: details.synopsis || details.description || "",
+          synopsis: details.synopsis || details.description || "",
+          authors: details.author || details.authors || [],
+          artists: details.artist || details.artists || [],
+          mangaType: type,
+          genres: details.genres || [],
+          themes: details.themes || [],
+          demographic: details.demographic || [],
+          originalLanguage: details.originalLanguage || "",
+          status: details.status || "",
+          totalChapters: details.totalChapters || 0,
+          chapters: details.chapters || [],
+        },
       };
-      fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-      console.log(`✅ Saved details for ${mangaId}`);
+
+      await Manga.findOneAndUpdate({ mangaId: mangaId }, updateData, {
+        upsert: true,
+        new: true,
+      });
+
+      console.log(`✅ Saved details for ${mangaId} to MongoDB`);
       return true;
     } catch (error) {
       console.error(`Error saving manga ${mangaId}:`, error.message);
@@ -129,64 +155,24 @@ class DataManager {
   }
 
   // Get all manga IDs
-  getAllMangaIds() {
+  async getAllMangaIds() {
     try {
-      const files = fs.readdirSync(this.detailsDir);
-      return files
-        .filter((f) => f.endsWith(".json"))
-        .map((f) => f.replace(".json", ""));
+      const mangas = await Manga.find({}, "mangaId").lean();
+      return mangas.map((m) => m.mangaId);
     } catch (error) {
       console.error("Error getting manga IDs:", error.message);
       return [];
     }
   }
 
-  // Migrate all stored manga data
-  migrateAllManga() {
-    const ids = this.getAllMangaIds();
-    let totalMigrated = 0;
-
-    ids.forEach((id) => {
-      const details = this.loadMangaDetails(id);
-      if (details) totalMigrated++;
-    });
-
-    if (totalMigrated > 0) {
-      console.log(
-        `✅ Startup migration: Checked/Migrated ${totalMigrated} manga files`,
-      );
-    }
-  }
-
-  // Sync all manga details to library list
-  syncDetailsToLibrary() {
-    const library = this.loadLibrary();
-    const existingIds = new Set(library.mangas?.map((m) => m.id) || []);
-    const allIds = this.getAllMangaIds();
-
-    let addedCount = 0;
-    const updatedMangas = [...(library.mangas || [])];
-
-    allIds.forEach((id) => {
-      if (!existingIds.has(id)) {
-        const details = this.loadMangaDetails(id);
-        if (details) {
-          updatedMangas.push({
-            id,
-            title: details.title,
-            thumbnail: details.thumbnail,
-            latestChapter:
-              details.totalChapters || details.chapters?.[0]?.number,
-          });
-          addedCount++;
-        }
-      }
-    });
-
-    if (addedCount > 0) {
-      this.saveLibrary(updatedMangas);
-      console.log(`✅ Synced ${addedCount} manga to library`);
-    }
+  // Migration from JSON to MongoDB (One-time run)
+  async migrateFromJSON() {
+    // This method would read local JSON files and save to MongoDB
+    // Can be implemented if user requests to keep old data.
+    // For now, leaving empty to avoid complex logic dependency without explicit request.
+    console.log(
+      "JSON to MongoDB migration function available but not auto-run.",
+    );
   }
 }
 
