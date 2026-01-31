@@ -98,6 +98,14 @@
     color: var(--accent-primary);
 }
 
+.status-finished {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(6, 182, 212, 0.2));
+    color: #2dd4bf; /* Teal-400 */
+    border: 1px solid rgba(45, 212, 191, 0.3);
+    font-weight: 600;
+    box-shadow: 0 0 10px rgba(45, 212, 191, 0.1);
+}
+
 /* Tags */
 .tags-section {
     display: flex;

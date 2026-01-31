@@ -91,11 +91,14 @@ class DataManager {
     }
   }
 
-  // Get manga that should be auto-updated (only those with full details scraped)
+  // Get manga that should be auto-updated (only those with full details scraped AND not completed)
   async getMangaForAutoUpdate() {
     try {
-      // Only return manga where user has clicked "Update Details"
-      const mangas = await Manga.find({ detailsScraped: true }).lean();
+      // Only return manga where user has clicked "Update Details" AND status is NOT Finished/Completed
+      const mangas = await Manga.find({
+        detailsScraped: true,
+        "details.status": { $not: /^(Finished|Completed)$/i },
+      }).lean();
       return mangas;
     } catch (error) {
       console.error("Error getting manga for auto-update:", error.message);
