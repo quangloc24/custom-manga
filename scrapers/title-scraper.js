@@ -174,8 +174,15 @@ class TitleScraper {
 
       mangaData.chapters = chapters;
       mangaData.totalChapters = chapters.length;
-      mangaData.latestChapter =
-        chapters.length > 0 ? chapters[chapters.length - 1].number : 0;
+
+      // Calculate latest chapter correctly
+      // API returns descending order, so chapters[0] is usually the latest.
+      // But to be safe, we find the max number.
+      if (chapters.length > 0) {
+        mangaData.latestChapter = Math.max(...chapters.map((c) => c.number));
+      } else {
+        mangaData.latestChapter = 0;
+      }
 
       console.log(`✅ Scraped: ${mangaData.title}`);
       console.log(`   Chapters: ${mangaData.totalChapters}`);
