@@ -14,6 +14,9 @@ const mangaCount = document.getElementById("mangaCount");
 const mangaUrlInput = document.getElementById("mangaUrlInput");
 const addMangaBtn = document.getElementById("addMangaBtn");
 
+// Initialize Toast
+const toast = new Toast();
+
 // Load library on page load
 window.addEventListener("load", loadLibrary);
 
@@ -115,14 +118,14 @@ async function scrapeHomepage() {
     const result = await response.json();
 
     if (result.success) {
-      alert(`Successfully scraped ${result.count} manga!`);
+      toast.success(`Successfully scraped ${result.count} manga!`);
       await loadLibrary();
     } else {
-      alert(`Error: ${result.error}`);
+      toast.error(`Error: ${result.error}`);
     }
   } catch (error) {
     console.error("Scrape error:", error);
-    alert("Failed to scrape homepage");
+    toast.error("Failed to scrape homepage");
   } finally {
     scrapeBtn.disabled = false;
     scrapeBtn.innerHTML = "<span>📥 Scrape Homepage</span>";
@@ -133,13 +136,13 @@ async function addMangaByUrl() {
   const url = mangaUrlInput.value.trim();
 
   if (!url) {
-    alert("Please enter a manga URL");
+    toast.warning("Please enter a manga URL");
     return;
   }
 
   // Validate URL format
   if (!url.includes("comix.to/title/")) {
-    alert("Please enter a valid comix.to manga URL");
+    toast.warning("Please enter a valid comix.to manga URL");
     return;
   }
 
@@ -159,18 +162,18 @@ async function addMangaByUrl() {
 
     if (result.success) {
       if (result.alreadyExists) {
-        alert(`"${result.data.title}" is already in your library!`);
+        toast.info(`"${result.data.title}" is already in your library!`);
       } else {
-        alert(`Successfully added: ${result.data.title}`);
+        toast.success(`Successfully added: ${result.data.title}`);
       }
       mangaUrlInput.value = "";
       await loadLibrary();
     } else {
-      alert(`Error: ${result.error}`);
+      toast.error(`Error: ${result.error}`);
     }
   } catch (error) {
     console.error("Add manga error:", error);
-    alert("Failed to add manga");
+    toast.error("Failed to add manga");
   } finally {
     addMangaBtn.disabled = false;
     addMangaBtn.innerHTML = "<span>➕ Add Manga</span>";
