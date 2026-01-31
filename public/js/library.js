@@ -15,7 +15,7 @@ const mangaUrlInput = document.getElementById("mangaUrlInput");
 const addMangaBtn = document.getElementById("addMangaBtn");
 
 // Initialize Toast
-const toast = new Toast();
+// Toast is already initialized in toast.js
 
 // Load library on page load
 window.addEventListener("load", loadLibrary);
