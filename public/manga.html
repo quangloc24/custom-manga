@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manga Details</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="css/manga-detail.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <a href="/" class="logo">📖 Manga Reader</a>
+                <nav class="nav">
+                    <a href="/" class="nav-link">Library</a>
+                    <a href="reader.html" class="nav-link">Reader</a>
+                </nav>
+            </div>
+        </header>
+
+        <!-- Loading State -->
+        <div class="loading-container" id="loadingContainer">
+            <div class="loading-spinner"></div>
+            <p class="loading-text">Loading manga details...</p>
+        </div>
+
+        <!-- Manga Detail Content -->
+        <div class="manga-detail" id="mangaDetail" style="display: none;">
+            <!-- Cover and Info Section -->
+            <div class="manga-header">
+                <div class="manga-cover">
+                    <img id="mangaCover" src="" alt="Cover">
+                </div>
+                <div class="manga-meta">
+                    <h1 id="mangaTitle" class="title"></h1>
+                    <div id="altTitles" class="alt-titles"></div>
+                    
+                    <div class="meta-grid">
+                        <div class="meta-item">
+                            <span class="meta-label">Author:</span>
+                            <span id="author" class="meta-value"></span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Artist:</span>
+                            <span id="artist" class="meta-value"></span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Status:</span>
+                            <span id="status" class="meta-value status-badge"></span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Language:</span>
+                            <span id="language" class="meta-value"></span>
+                        </div>
+                    </div>
+
+                    <div class="tags-section">
+                        <div class="tag-group">
+                            <span class="tag-label">Genres:</span>
+                            <div id="genres" class="tags"></div>
+                        </div>
+                        <div class="tag-group">
+                            <span class="tag-label">Themes:</span>
+                            <div id="themes" class="tags"></div>
+                        </div>
+                        <div class="tag-group">
+                            <span class="tag-label">Demographic:</span>
+                            <div id="demographic" class="tags"></div>
+                        </div>
+                    </div>
+
+                    <button id="scrapeDetailsBtn" class="action-btn">
+                        📥 Update Details
+                    </button>
+                </div>
+            </div>
+
+            <!-- Synopsis -->
+            <div class="synopsis-section">
+                <h2>Synopsis</h2>
+                <p id="synopsis" class="synopsis-text"></p>
+            </div>
+
+            <!-- Chapters List -->
+            <div class="chapters-section">
+                <h2>Chapters (<span id="chapterCount">0</span>)</h2>
+                <div id="chaptersList" class="chapters-list">
+                    <!-- Chapters will be inserted here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p><a href="/">← Back to Library</a></p>
+        </footer>
+    </div>
+
+    <script src="js/manga-detail.js"></script>
+</body>
+</html>

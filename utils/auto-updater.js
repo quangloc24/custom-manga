@@ -1,0 +1,158 @@
+const cron = require("node-cron");
+const fs = require("fs");
+const path = require("path");
+
+class AutoUpdater {
+  constructor(titleScraper, dataManager) {
+    this.titleScraper = titleScraper;
+    this.dataManager = dataManager;
+    this.task = null;
+    this.isRunning = false;
+    this.updateIntervalHours = parseInt(
+      process.env.AUTO_UPDATE_INTERVAL_HOURS || "24",
+      10,
+    );
+  }
+
+  start() {
+    // Support both hours and minutes for testing
+    const updateMinutes = parseInt(
+      process.env.AUTO_UPDATE_INTERVAL_MINUTES || "0",
+      10,
+    );
+
+    let cronExpression;
+    let intervalDescription;
+
+    if (updateMinutes > 0) {
+      // Use minutes for testing
+      cronExpression = `*/${updateMinutes} * * * *`; // Every N minutes
+      intervalDescription = `every ${updateMinutes} minute(s)`;
+    } else {
+      // Use hours for production
+      cronExpression =
+        this.updateIntervalHours === 24
+          ? "0 0 * * *" // Daily at midnight
+          : `0 */${this.updateIntervalHours} * * *`; // Every N hours
+      intervalDescription = `every ${this.updateIntervalHours} hours`;
+    }
+
+    console.log(`📅 Auto-updater scheduled: ${intervalDescription}`);
+
+    this.task = cron.schedule(cronExpression, async () => {
+      await this.updateAllManga();
+    });
+
+    // Optionally run on startup (disabled by default)
+    if (process.env.AUTO_UPDATE_ON_STARTUP === "true") {
+      console.log("🔄 Running initial update on startup...");
+      setTimeout(() => this.updateAllManga(), 5000); // Wait 5s after startup
+    }
+  }
+
+  stop() {
+    if (this.task) {
+      this.task.stop();
+      console.log("📅 Auto-updater stopped");
+    }
+  }
+
+  async updateAllManga() {
+    if (this.isRunning) {
+      console.log("⏭️  Update already in progress, skipping...");
+      return;
+    }
+
+    this.isRunning = true;
+    console.log("\n🔄 Starting automatic manga update...");
+    const startTime = Date.now();
+
+    try {
+      const mangaDir = path.join(__dirname, "..", "data", "manga-details");
+
+      // Check if manga directory exists
+      if (!fs.existsSync(mangaDir)) {
+        console.log("📂 No manga directory found, skipping update");
+        return;
+      }
+
+      // Get all manga IDs from saved files
+      const files = fs.readdirSync(mangaDir);
+      const mangaIds = files
+        .filter((file) => file.endsWith(".json"))
+        .map((file) => file.replace(".json", ""));
+
+      if (mangaIds.length === 0) {
+        console.log("📚 No manga to update");
+        return;
+      }
+
+      console.log(`📚 Found ${mangaIds.length} manga to update`);
+
+      let successCount = 0;
+      let errorCount = 0;
+      let newChaptersTotal = 0;
+
+      for (const mangaId of mangaIds) {
+        try {
+          console.log(`\n   Updating: ${mangaId}`);
+          const url = `https://comix.to/title/${mangaId}`;
+
+          // Load existing data to compare
+          const existingData = this.dataManager.loadMangaDetails(mangaId);
+          const oldChapterCount = existingData?.totalChapters || 0;
+
+          // Scrape fresh data
+          const result = await this.titleScraper.scrapeMangaDetails(url);
+
+          if (result.success) {
+            const newChapterCount = result.data.totalChapters;
+            const newChapters = newChapterCount - oldChapterCount;
+
+            // Save updated data
+            this.dataManager.saveMangaDetails(mangaId, result.data);
+
+            if (newChapters > 0) {
+              console.log(
+                `   ✅ ${result.data.title}: +${newChapters} new chapters (${oldChapterCount} → ${newChapterCount})`,
+              );
+              newChaptersTotal += newChapters;
+            } else {
+              console.log(
+                `   ✅ ${result.data.title}: Up to date (${newChapterCount} chapters)`,
+              );
+            }
+
+            successCount++;
+          } else {
+            console.log(`   ❌ Failed: ${result.error}`);
+            errorCount++;
+          }
+
+          // Small delay between updates to avoid overwhelming the server
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        } catch (error) {
+          console.log(`   ❌ Error: ${error.message}`);
+          errorCount++;
+        }
+      }
+
+      const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`\n✅ Update complete in ${duration}s`);
+      console.log(`   Success: ${successCount}, Errors: ${errorCount}`);
+      console.log(`   New chapters found: ${newChaptersTotal}`);
+    } catch (error) {
+      console.error("❌ Auto-update error:", error.message);
+    } finally {
+      this.isRunning = false;
+    }
+  }
+
+  // Manual trigger for testing
+  async triggerUpdate() {
+    console.log("🔄 Manually triggering update...");
+    await this.updateAllManga();
+  }
+}
+
+module.exports = AutoUpdater;

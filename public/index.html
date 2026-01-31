@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manga Library</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="css/library.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <a href="/" class="logo">📖 Manga Reader</a>
+                <nav class="nav">
+                    <a href="/" class="nav-link active">Library</a>
+                    <a href="reader.html" class="nav-link">Reader</a>
+                </nav>
+            </div>
+        </header>
+
+        <!-- Search and Actions -->
+        <div class="actions-bar">
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Search manga..." class="search-input">
+                <button id="searchBtn" class="search-btn">🔍</button>
+            </div>
+            <div class="add-manga-box">
+                <input type="text" id="mangaUrlInput" placeholder="Paste manga URL (e.g., https://comix.to/title/...)" class="manga-url-input">
+                <button id="addMangaBtn" class="action-btn">
+                    <span>➕ Add Manga</span>
+                </button>
+            </div>
+            <button id="scrapeBtn" class="action-btn">
+                <span>📥 Scrape Homepage</span>
+            </button>
+        </div>
+
+        <!-- Loading State -->
+        <div class="loading-container" id="loadingContainer" style="display: none;">
+            <div class="loading-spinner"></div>
+            <p class="loading-text">Loading manga library...</p>
+        </div>
+
+        <!-- Empty State -->
+        <div class="empty-state" id="emptyState" style="display: none;">
+            <div class="empty-icon">📚</div>
+            <h2>No Manga in Library</h2>
+            <p>Click "Scrape Homepage" to populate your library</p>
+        </div>
+
+        <!-- Manga Grid -->
+        <div class="manga-grid" id="mangaGrid">
+            <!-- Manga cards will be inserted here -->
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Private Manga Reader • <span id="mangaCount">0</span> manga in library</p>
+        </footer>
+    </div>
+
+    <script src="js/library.js"></script>
+</body>
+</html>

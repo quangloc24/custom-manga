@@ -1,0 +1,331 @@
+/* Manga Detail Page Styles */
+
+.manga-detail {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* Header Section */
+.manga-header {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 40px;
+    margin: 30px 0;
+    background: var(--bg-card);
+    padding: 30px;
+    border-radius: 20px;
+    border: 1px solid var(--border-color);
+}
+
+.manga-cover {
+    width: 100%;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.manga-cover img {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.manga-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.title {
+    font-size: 2rem;
+    font-weight: 700;
+    background: var(--accent-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin: 0;
+}
+
+.alt-titles {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-style: italic;
+}
+
+/* Meta Grid */
+.meta-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+}
+
+.meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.meta-label {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.meta-value {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    text-transform: capitalize;
+}
+
+.status-releasing {
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--success);
+}
+
+.status-completed {
+    background: rgba(99, 102, 241, 0.2);
+    color: var(--accent-primary);
+}
+
+/* Tags */
+.tags-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.tag-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.tag-label {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    min-width: 100px;
+}
+
+.tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.tag {
+    padding: 6px 12px;
+    background: rgba(99, 102, 241, 0.1);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    border-radius: 6px;
+    font-size: 0.85rem;
+    color: var(--accent-primary);
+}
+
+/* Synopsis Section */
+.synopsis-section {
+    background: var(--bg-card);
+    padding: 30px;
+    border-radius: 20px;
+    border: 1px solid var(--border-color);
+    margin: 30px 0;
+}
+
+.synopsis-section h2 {
+    color: var(--text-primary);
+    margin-bottom: 15px;
+}
+
+.synopsis-text {
+    color: var(--text-secondary);
+    line-height: 1.8;
+    font-size: 1rem;
+}
+
+/* Chapters Section */
+.chapters-section {
+    background: var(--bg-card);
+    padding: 30px;
+    border-radius: 20px;
+    border: 1px solid var(--border-color);
+    margin: 30px 0;
+}
+
+.chapters-section h2 {
+    color: var(--text-primary);
+    margin-bottom: 20px;
+}
+
+.chapters-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.chapter-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.chapter-item:hover {
+    background: rgba(99, 102, 241, 0.1);
+    border-color: var(--accent-primary);
+    transform: translateX(5px);
+}
+
+.chapter-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.chapter-right {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.chapter-number {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 1rem;
+}
+
+.chapter-provider {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.chapter-time {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    opacity: 0.7;
+}
+
+/* Provider Filter */
+.provider-filter {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: var(--bg-secondary);
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+}
+
+.filter-label {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-bottom: 10px;
+    font-weight: 500;
+}
+
+.filter-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.filter-btn {
+    padding: 8px 16px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.filter-btn:hover {
+    background: rgba(99, 102, 241, 0.1);
+    border-color: var(--accent-primary);
+}
+
+.filter-btn.active {
+    background: var(--accent-primary);
+    color: white;
+    border-color: var(--accent-primary);
+}
+
+.download-btn {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.download-btn:hover {
+    background: rgba(99, 102, 241, 0.1);
+    border-color: var(--accent-primary);
+}
+
+.download-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.download-btn.downloaded {
+    color: #10b981; /* Green */
+    border-color: #10b981;
+    background: rgba(16, 185, 129, 0.1);
+}
+
+.download-btn.issue {
+    color: #f59e0b; /* Amber */
+    border-color: #f59e0b;
+    background: rgba(245, 158, 11, 0.1);
+}
+
+.chapter-left {
+    flex: 1;
+    padding-right: 15px;
+}
+
+.no-chapters {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 40px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .manga-header {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+
+    .manga-cover {
+        max-width: 300px;
+        margin: 0 auto;
+    }
+
+    .meta-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .title {
+        font-size: 1.5rem;
+    }
+}

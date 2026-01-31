@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Manga Reader</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <!-- Header -->
+      <header class="header">
+        <h1 class="logo">📖 Manga Reader</h1>
+        <div class="header-info">
+          <span id="chapterTitle" class="chapter-title"></span>
+        </div>
+      </header>
+
+      <!-- URL Input Section -->
+      <div class="input-section" id="inputSection">
+        <div class="input-card">
+          <h2>Enter Manga Chapter URL</h2>
+          <p class="subtitle">Paste a chapter URL from comix.to</p>
+          <div class="input-group">
+            <input
+              type="text"
+              id="urlInput"
+              placeholder="https://comix.to/title/..."
+              class="url-input"
+            />
+            <button id="loadBtn" class="load-btn">
+              <span class="btn-text">Load Chapter</span>
+              <span class="btn-icon">→</span>
+            </button>
+          </div>
+          <div class="example-text">
+            Example:
+            https://comix.to/title/rm2xv-the-grand-dukes-bride-is-a-hellborn-warrior/7244161-chapter-40
+          </div>
+        </div>
+      </div>
+
+      <!-- Loading State -->
+      <div
+        class="loading-container"
+        id="loadingContainer"
+        style="display: none"
+      >
+        <div class="loading-spinner"></div>
+        <p class="loading-text">Loading manga pages...</p>
+      </div>
+
+      <!-- Error State -->
+      <div class="error-container" id="errorContainer" style="display: none">
+        <div class="error-icon">⚠️</div>
+        <h3 class="error-title">Failed to Load Chapter</h3>
+        <p class="error-message" id="errorMessage"></p>
+        <button id="retryBtn" class="retry-btn">Try Again</button>
+      </div>
+
+      <!-- Reader Section -->
+      <div class="reader-section" id="readerSection" style="display: none">
+        <div class="controls sticky-controls">
+
+          <a id="backToMangaBtn" href="/" class="nav-btn secondary">← Back to Manga Info</a>
+          <button id="prevChapterBtn" class="nav-btn secondary">⬅️ Prev</button>
+          <select id="chapterSelect" class="chapter-select">
+            <option value="" disabled selected>Loading chapters...</option>
+          </select>
+          <button id="nextChapterBtn" class="nav-btn secondary">Next ➡️</button>
+          <button id="reloadBtn" class="nav-btn secondary">🔄 Reload</button>
+        </div>
+
+        <!-- Image Container -->
+        <div class="images-container" id="imagesContainer">
+          <!-- Images will be loaded here -->
+        </div>
+
+        <!-- Bottom Controls -->
+        <div class="controls bottom-controls">
+          <a id="backToMangaBtnBottom" href="/" class="nav-btn secondary">← Back to Manga Info</a>
+          <button id="prevChapterBtnBottom" class="nav-btn secondary">⬅️ Prev</button>
+          <select id="chapterSelectBottom" class="chapter-select">
+            <option value="" disabled selected>Loading chapters...</option>
+          </select>
+          <button id="nextChapterBtnBottom" class="nav-btn secondary">Next ➡️</button>
+          <button id="topBtn" class="nav-btn secondary">↑ Back to Top</button>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <footer class="footer">
+        <p>Private Manga Reader • For Personal Use Only</p>
+        <p class="footer-note">
+          Use keyboard arrows (←/→) to navigate between chapters
+        </p>
+      </footer>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
