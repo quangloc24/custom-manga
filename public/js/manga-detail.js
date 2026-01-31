@@ -206,6 +206,38 @@ function displayMangaDetails(manga) {
   displayChapters(details.chapters || []);
   chapterCount.textContent =
     details.totalChapters || (details.chapters ? details.chapters.length : 0);
+
+  // Start Reading Button Logic
+  const startReadingContainer = document.getElementById(
+    "startReadingContainer",
+  );
+  const startReadingBtn = document.getElementById("startReadingBtn");
+
+  if (details.chapters && details.chapters.length > 0) {
+    // Get the first chapter (usually the last index because chapters are descending)
+    // BUT scraper usually returns array. Let's sort to be safe or check logic.
+    // displayChapters sorts them? No, it says "Chapters are already sorted by scraper (descending)"
+    // So the LAST element is the first chapter (Chapter 1).
+    const chapters = details.chapters;
+    const firstChapter = chapters[chapters.length - 1];
+
+    // Check if we have a valid chapter
+    if (firstChapter) {
+      startReadingContainer.style.display = "flex";
+      startReadingBtn.onclick = () => {
+        const params = new URLSearchParams();
+        params.append("url", firstChapter.url);
+        params.append("mangaId", manga.mangaId || mangaId);
+        params.append("provider", firstChapter.provider || "Unknown");
+        params.append("chapterId", firstChapter.id);
+        params.append("chapterNumber", firstChapter.number);
+
+        window.location.href = `reader.html?${params.toString()}`;
+      };
+    }
+  } else {
+    startReadingContainer.style.display = "none";
+  }
 }
 
 function addSynopsisToggle(synopsisElement, fullText) {

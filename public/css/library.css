@@ -228,8 +228,8 @@
 /* Responsive */
 @media (max-width: 768px) {
     .manga-grid {
-        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-        gap: 15px;
+        grid-template-columns: repeat(2, 1fr); /* Force 2 columns */
+        gap: 12px; /* Smaller gap */
     }
     
     .actions-bar {

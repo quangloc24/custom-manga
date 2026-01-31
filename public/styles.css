@@ -375,7 +375,7 @@ body {
 /* Responsive Design */
 @media (max-width: 768px) {
   .container {
-    padding: 15px;
+    padding: 12px; /* reduced padding */
   }
 
   .logo {
@@ -399,12 +399,70 @@ body {
     justify-content: center;
   }
 
+  /* Single Row Toolbar Logic */
   .controls {
-    flex-direction: column;
+    flex-direction: row;
+    flex-wrap: nowrap; /* Force single line */
+    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 5px; /* Minimal side padding */
   }
 
+  /* Reset orders */
+  #backToMangaBtn, #backToMangaBtnBottom,
+  #prevChapterBtn, #prevChapterBtnBottom,
+  #nextChapterBtn, #nextChapterBtnBottom,
+  .chapter-select,
+  #reloadBtn, #topBtn {
+    width: auto;
+    flex: 0 0 auto;
+    order: unset;
+  }
+
+  /* Specific sizing */
+  .chapter-select {
+    flex: 1 1 auto; /* Take up remaining space */
+    width: auto;
+    max-width: none;
+    height: 36px;
+    padding: 0 10px;
+    background-position: right 0.2rem center;
+    font-size: 0.8rem;
+    text-overflow: ellipsis;
+  }
+
+  /* Hide text labels on mobile */
+  .btn-text {
+    display: none;
+  }
+  
+  .btn-icon {
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+
+  /* Button styling reset for icon-only */
   .nav-btn {
-    width: 100%;
+    padding: 8px; /* Square-ish aspect */
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+  }
+
+  /* Hide Reload/Top on mobile toolbar if too cramped, or keep as icon */
+  #reloadBtn, #topBtn {
+    display: none; /* Hide reload on mobile bar to save space */
+  }
+
+  .chapter-select {
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    height: 38px; /* Match button visual height approximately */
+    background-position: right 0.5rem center; /* Adjust arrow position */
   }
 
   .images-container {

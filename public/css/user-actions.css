@@ -252,7 +252,25 @@
 /* Responsive Design */
 @media (max-width: 768px) {
     .action-row {
-        grid-template-columns: 1fr;
+        grid-template-columns: 1fr 1fr; /* 2 columns for buttons */
+        gap: 10px;
+    }
+    
+    .user-actions {
+        padding: 20px;
+        margin-top: 15px;
+    }
+    
+    .action-btn, .action-select {
+        font-size: 0.9rem;
+        padding: 10px 14px;
+    }
+    
+    /* Make full width if needed, but 2-col is usually better for height */
+    @media (max-width: 480px) {
+        .action-row {
+             grid-template-columns: 1fr; /* Stack on VERY small screens */
+        }
     }
     
     .user-actions {

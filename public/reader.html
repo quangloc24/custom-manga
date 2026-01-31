@@ -62,13 +62,22 @@
       <div class="reader-section" id="readerSection" style="display: none">
         <div class="controls sticky-controls">
 
-          <a id="backToMangaBtn" href="/" class="nav-btn secondary">← Back to Manga Info</a>
-          <button id="prevChapterBtn" class="nav-btn secondary">⬅️ Prev</button>
+          <a id="backToMangaBtn" href="/" class="nav-btn secondary">
+            <span class="btn-icon">↩️</span>
+            <span class="btn-text">Manga</span>
+          </a>
+          <button id="prevChapterBtn" class="nav-btn secondary">
+            <span class="btn-icon">⬅️</span>
+          </button>
           <select id="chapterSelect" class="chapter-select">
-            <option value="" disabled selected>Loading chapters...</option>
+            <option value="" disabled selected>Ch...</option>
           </select>
-          <button id="nextChapterBtn" class="nav-btn secondary">Next ➡️</button>
-          <button id="reloadBtn" class="nav-btn secondary">🔄 Reload</button>
+          <button id="nextChapterBtn" class="nav-btn secondary">
+            <span class="btn-icon">➡️</span>
+          </button>
+          <button id="reloadBtn" class="nav-btn secondary">
+            <span class="btn-icon">🔄</span>
+          </button>
         </div>
 
         <!-- Image Container -->
