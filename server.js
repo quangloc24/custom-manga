@@ -211,16 +211,16 @@ app.get("/api/library", async (req, res) => {
 // Get manga details
 app.get("/api/manga/:id", async (req, res) => {
   try {
-    const { id } = req.params;
-    const details = await dataManager.loadMangaDetails(id);
-
-    if (!details) {
+    const includeChapters = req.query.chapters !== "false";
+    const manga = await dataManager.loadMangaDetails(
+      req.params.id,
+      includeChapters,
+    );
+    if (!manga) {
       return res.status(404).json({ error: "Manga not found" });
     }
-
-    res.json(details);
+    res.json(manga);
   } catch (error) {
-    console.error("Manga details error:", error);
     res.status(500).json({ error: error.message });
   }
 });

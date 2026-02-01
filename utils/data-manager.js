@@ -63,14 +63,25 @@ class DataManager {
   }
 
   // Load manga details
-  async loadMangaDetails(mangaId) {
+  async loadMangaDetails(mangaId, includeChapters = true) {
     try {
-      const manga = await Manga.findOne({ mangaId }).lean();
+      let query = Manga.findOne({ mangaId });
+
+      if (!includeChapters) {
+        query = query.select("-details.chapters");
+      }
+
+      const manga = await query.lean();
       if (manga) {
         return {
           ...manga,
-          // Spread details to top level to match previous JSON structure if expected by frontend
-          ...manga.details,
+          // Spread details to top level for frontend (keep existing behavior)
+          ...(manga.details || {}),
+          // Ensure chapters is at least an empty array if excluded/missing
+          chapters:
+            manga.details && manga.details.chapters
+              ? manga.details.chapters
+              : [],
           id: manga.mangaId,
         };
       }

@@ -82,38 +82,96 @@ async function loadMangaDetails() {
   }
 
   try {
+    // 1. Fast Load: Fetch metadata only (no chapters)
     const timestamp = new Date().getTime();
-    const response = await fetch(`/api/manga/${mangaId}?_t=${timestamp}`);
+    console.log("Fetching manga metadata...");
+    const metaResponse = await fetch(
+      `/api/manga/${mangaId}?chapters=false&_t=${timestamp}`,
+    );
 
-    if (!response.ok) {
-      // If manga details don't exist, automatically scrape them
-      console.log("Manga details not found, scraping automatically...");
+    let metaManga = null;
+    if (metaResponse.ok) {
+      metaManga = await metaResponse.json();
+
+      // If metadata exists but hasn't been fully scraped (detailsScraped is false),
+      // DO NOT render the "Unknown" UI. Go straight to scraping.
+      if (!metaManga.detailsScraped) {
+        console.log(
+          "Manga metadata exists but not scraped. Triggering auto-scrape...",
+        );
+        await autoScrapeMangaDetails();
+        return;
+      }
+
+      // Render basic info immediately
+      displayMangaDetails(metaManga, true);
+    } else if (metaResponse.status === 404) {
+      console.log("Manga not found (404), scraping automatically...");
       await autoScrapeMangaDetails();
       return;
     }
 
+    // 2. Slow Load: Fetch full data with chapters
+    console.log("Fetching chapters...");
+    const response = await fetch(`/api/manga/${mangaId}?_t=${timestamp}`);
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        console.log("Manga not found (404) during full load, scraping...");
+        await autoScrapeMangaDetails();
+        return;
+      }
+      throw new Error(`Failed to load chapters: ${response.statusText}`);
+    }
+
     const manga = await response.json();
 
-    // Check if we have full details (e.g. chapters).
-    // Homepage scrape only gives title/thumbnail.
-    // MongoDB model has 'details' object.
-    if (
-      !manga.details ||
-      !manga.details.chapters ||
-      manga.details.chapters.length === 0
-    ) {
+    // Check if we have details and if they were successfully scraped
+    if (!manga.details || !manga.detailsScraped) {
       console.log(
-        "Manga found but has no chapters/details, triggering auto-scrape...",
+        "Manga details not marked as scraped, triggering auto-scrape...",
       );
       await autoScrapeMangaDetails();
       return;
     }
 
-    displayMangaDetails(manga);
+    // Check if chapters are empty (and we expected them)
+    // Note: Some manga might legitimately have 0 chapters if new.
+    // But usually we want to try scraping at least once if 0.
+    // Currently, we rely on 'detailsScraped' flag in model, but frontend doesn't see it easily.
+    // Let's stick to: if 0 chapters and we didn't just scrape, maybe warn?
+    // For now, let's allow 0 chapters if the document exists to prevent loops.
+    // OR: Only scrape if manga.details is completely missing.
+
+    // Render full details
+    displayMangaDetails(manga, false);
   } catch (error) {
     console.error("Error loading manga:", error);
-    // Try auto-scraping as fallback
-    await autoScrapeMangaDetails();
+    // Only auto-scrape if we strongly suspect it's missing, NOT on network/render errors
+    // If we already rendered the Lite version, DO NOT scrape on error.
+    const isLiteRendered =
+      document.getElementById("mangaTitle").textContent !== "Loading...";
+
+    if (!isLiteRendered) {
+      // If we failed before showing ANYTHING, maybe it's a connection issue.
+      // Showing an error is safer than scraping loops.
+      const loadingText = loadingContainer.querySelector("p");
+      if (loadingText)
+        loadingText.textContent = "Error loading details. Retrying...";
+      setTimeout(loadMangaDetails, 3000); // Retry once after 3s
+    } else {
+      // We showed title, but chapters failed.
+      // Update the chapter list spinner to show error
+      const chaptersList = document.getElementById("chaptersList");
+      if (chaptersList) {
+        chaptersList.innerHTML = `
+                <div class="error-message" style="padding: 2rem; text-align: center;">
+                    <p>Failed to load chapters.</p>
+                    <button onclick="loadMangaDetails()">Retry</button>
+                </div>
+             `;
+      }
+    }
   }
 }
 
@@ -143,7 +201,7 @@ async function autoScrapeMangaDetails() {
   }
 }
 
-function displayMangaDetails(manga) {
+function displayMangaDetails(manga, isLiteVersion = false) {
   loadingContainer.style.display = "none";
   mangaDetail.style.display = "block";
 
@@ -204,36 +262,45 @@ function displayMangaDetails(manga) {
   addSynopsisToggle(synopsis, synopsisText);
 
   // Chapters
-  displayChapters(details.chapters || []);
-  chapterCount.textContent =
-    details.totalChapters || (details.chapters ? details.chapters.length : 0);
+  if (isLiteVersion) {
+    chaptersList.innerHTML = `
+      <div class="loading-spinner" style="padding: 2rem;">
+        <div class="spinner"></div>
+        <p>Loading chapters...</p>
+      </div>
+    `;
+    chapterCount.textContent = "...";
+  } else {
+    displayChapters(details.chapters || []);
+    chapterCount.textContent =
+      details.totalChapters || (details.chapters ? details.chapters.length : 0);
 
-  // Start Reading Button Logic
-  // Start Reading Button Logic
-  const startReadingBtn = document.getElementById("startReadingBtn");
+    // Start Reading Button Logic
+    const startReadingBtn = document.getElementById("startReadingBtn");
 
-  if (details.chapters && details.chapters.length > 0) {
-    const chapters = details.chapters;
-    const firstChapter = chapters[chapters.length - 1];
+    if (details.chapters && details.chapters.length > 0) {
+      const chapters = details.chapters;
+      const firstChapter = chapters[chapters.length - 1];
 
-    // Check if we have a valid chapter
-    if (firstChapter) {
-      startReadingBtn.style.display = "flex";
-      startReadingBtn.onclick = () => {
-        const params = new URLSearchParams();
-        params.append("url", firstChapter.url);
-        params.append("mangaId", manga.mangaId || mangaId);
-        params.append("provider", firstChapter.provider || "Unknown");
-        params.append("chapterId", firstChapter.id);
-        params.append("chapterNumber", firstChapter.number);
+      // Check if we have a valid chapter
+      if (firstChapter) {
+        startReadingBtn.style.display = "flex";
+        startReadingBtn.onclick = () => {
+          const params = new URLSearchParams();
+          params.append("url", firstChapter.url);
+          params.append("mangaId", manga.mangaId || mangaId);
+          params.append("provider", firstChapter.provider || "Unknown");
+          params.append("chapterId", firstChapter.id);
+          params.append("chapterNumber", firstChapter.number);
 
-        window.location.href = `reader.html?${params.toString()}`;
-      };
+          window.location.href = `reader.html?${params.toString()}`;
+        };
+      } else {
+        startReadingBtn.style.display = "none";
+      }
     } else {
       startReadingBtn.style.display = "none";
     }
-  } else {
-    startReadingBtn.style.display = "none";
   }
 }
 
