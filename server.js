@@ -333,7 +333,14 @@ app.post("/api/download/chapter", async (req, res) => {
     const { mangaId, provider, chapterId, chapterNumber, chapterUrl } =
       req.body;
 
-    if (!mangaId || !provider || !chapterId || !chapterNumber || !chapterUrl) {
+    if (
+      !mangaId ||
+      !provider ||
+      !chapterId ||
+      chapterNumber === undefined ||
+      chapterNumber === null ||
+      !chapterUrl
+    ) {
       return res.status(400).json({
         success: false,
         error: "Missing required parameters",
