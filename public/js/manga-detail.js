@@ -115,8 +115,20 @@ async function loadMangaDetails() {
       return;
     }
 
-    // 2. Slow Load: Fetch full data with chapters
-    console.log("Fetching chapters...");
+    // 2. Slow Load: Fetch full data AND status in parallel
+    console.log("Fetching chapters and status...");
+
+    // Start status fetch immediately (don't await yet)
+    const statusPromise = fetch(
+      `/api/download/status/${mangaId}?_t=${timestamp}`,
+    )
+      .then((res) => (res.ok ? res.json() : {}))
+      .catch((e) => {
+        console.error("Failed to fetch download statuses:", e);
+        return {};
+      });
+
+    // Start manga fetch
     const response = await fetch(`/api/manga/${mangaId}?_t=${timestamp}`);
 
     if (!response.ok) {
@@ -130,7 +142,7 @@ async function loadMangaDetails() {
 
     const manga = await response.json();
 
-    // Check if we have details and if they were successfully scraped
+    // Check if we have details
     if (!manga.details || !manga.detailsScraped) {
       console.log(
         "Manga details not marked as scraped, triggering auto-scrape...",
@@ -139,20 +151,19 @@ async function loadMangaDetails() {
       return;
     }
 
-    // Parallel Fetch: Get download statuses for ALL chapters at once
-    try {
-      const statusResponse = await fetch(
-        `/api/download/status/${mangaId}?_t=${timestamp}`,
-      );
-      if (statusResponse.ok) {
-        downloadStatusMap = await statusResponse.json();
-      }
-    } catch (e) {
-      console.error("Failed to fetch download statuses:", e);
-    }
-
-    // Render full details (updates chapter list)
+    // RENDER IMMEDIATELY (without status)
+    // This solves the "late" appearance. Buttons will show as "Download" initially.
     displayMangaDetails(manga, false);
+
+    // Update status when ready
+    statusPromise.then((statusMap) => {
+      downloadStatusMap = statusMap;
+      // Re-render only the chapters part to update ticks
+      // Or better: update existing buttons to avoid flicker?
+      // Re-rendering is fast enough for < 1000 items.
+      // But let's check if we can just update.
+      updateChapterStatuses();
+    });
   } catch (error) {
     console.error("Error loading manga:", error);
     // Only auto-scrape if we strongly suspect it's missing, NOT on network/render errors
@@ -622,6 +633,29 @@ async function downloadChapter(chapter, buttonEl) {
   }
 }
 
+// Helper to update statuses without re-rendering list
+function updateChapterStatuses() {
+  const buttons = document.querySelectorAll(".chapter-item .download-btn");
+  buttons.forEach((btn) => {
+    const chapterId = btn.dataset.chapterId;
+    const status = downloadStatusMap[chapterId];
+
+    if (status && status.downloaded) {
+      btn.textContent = "✓";
+      btn.title = status.hasIssue
+        ? `Issue: Only ${status.downloadedPages} pages downloaded`
+        : `Downloaded ${status.downloadedPages}/${status.totalPages} pages`;
+      btn.classList.add("downloaded");
+
+      if (status.hasIssue) {
+        btn.textContent = "⚠️";
+        btn.classList.remove("downloaded");
+        btn.classList.add("issue");
+      }
+    }
+  });
+}
+
 async function checkDownloadStatus(chapter, buttonEl) {
   try {
     const timestamp = new Date().getTime();
@@ -861,16 +895,20 @@ saveNoteBtn.addEventListener("click", () => {
 // Custom list functionality moved to list-modal.js
 
 // Refresh download status when page is shown (e.g. back navigation)
-window.addEventListener("pageshow", () => {
-  const downloadBtns = document.querySelectorAll(".download-btn");
-  downloadBtns.forEach((btn) => {
-    // Re-check status if we have the data
-    const provider =
-      btn.closest(".chapter-item")?.dataset.provider || "Unknown";
-    const chapterId = btn.dataset.chapterId;
+window.addEventListener("pageshow", async () => {
+  if (!mangaId) return;
 
-    if (chapterId) {
-      checkDownloadStatus({ provider, id: chapterId }, btn);
+  // Batch update on back navigation
+  const timestamp = new Date().getTime();
+  try {
+    const statusResponse = await fetch(
+      `/api/download/status/${mangaId}?_t=${timestamp}`,
+    );
+    if (statusResponse.ok) {
+      downloadStatusMap = await statusResponse.json();
+      updateChapterStatuses();
     }
-  });
+  } catch (e) {
+    console.error("Pageshow status update failed:", e);
+  }
 });
