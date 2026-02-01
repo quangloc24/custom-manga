@@ -528,8 +528,9 @@ html {
 }
 
 
+
 /* Loading Spinner */
-.loading-spinner {
+.loading-state-container {
   display: flex;
   flex-direction: column;
   align-items: center;

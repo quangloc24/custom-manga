@@ -264,7 +264,7 @@ function displayMangaDetails(manga, isLiteVersion = false) {
   // Chapters
   if (isLiteVersion) {
     chaptersList.innerHTML = `
-      <div class="loading-spinner" style="padding: 2rem;">
+      <div class="loading-state-container" style="padding: 2rem;">
         <div class="spinner"></div>
         <p>Loading chapters...</p>
       </div>
