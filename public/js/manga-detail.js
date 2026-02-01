@@ -82,7 +82,8 @@ async function loadMangaDetails() {
   }
 
   try {
-    const response = await fetch(`/api/manga/${mangaId}`);
+    const timestamp = new Date().getTime();
+    const response = await fetch(`/api/manga/${mangaId}?_t=${timestamp}`);
 
     if (!response.ok) {
       // If manga details don't exist, automatically scrape them
@@ -450,8 +451,9 @@ async function downloadChapter(chapter, buttonEl) {
 
 async function checkDownloadStatus(chapter, buttonEl) {
   try {
+    const timestamp = new Date().getTime();
     const response = await fetch(
-      `/api/download/status/${mangaId}/${encodeURIComponent(chapter.provider || "Unknown")}/${chapter.id}`,
+      `/api/download/status/${mangaId}/${encodeURIComponent(chapter.provider || "Unknown")}/${chapter.id}?_t=${timestamp}`,
     );
     const result = await response.json();
 
