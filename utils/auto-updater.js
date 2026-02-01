@@ -116,8 +116,15 @@ class AutoUpdater {
             errorCount++;
           }
 
-          // Small delay between updates to avoid overwhelming the server
-          await new Promise((resolve) => setTimeout(resolve, 2000));
+          // Random delay between 1 and 3 minutes (60000ms to 180000ms)
+          const minDelay = 60000;
+          const maxDelay = 180000;
+          const randomDelay =
+            Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+          const delaySeconds = (randomDelay / 1000).toFixed(0);
+
+          console.log(`   ⏳ Waiting ${delaySeconds}s before next update...`);
+          await new Promise((resolve) => setTimeout(resolve, randomDelay));
         } catch (error) {
           console.log(`   ❌ Error: ${error.message}`);
           errorCount++;
