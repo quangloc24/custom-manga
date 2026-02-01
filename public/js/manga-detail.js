@@ -684,3 +684,18 @@ saveNoteBtn.addEventListener("click", () => {
 });
 
 // Custom list functionality moved to list-modal.js
+
+// Refresh download status when page is shown (e.g. back navigation)
+window.addEventListener("pageshow", () => {
+  const downloadBtns = document.querySelectorAll(".download-btn");
+  downloadBtns.forEach((btn) => {
+    // Re-check status if we have the data
+    const provider =
+      btn.closest(".chapter-item")?.dataset.provider || "Unknown";
+    const chapterId = btn.dataset.chapterId;
+
+    if (chapterId) {
+      checkDownloadStatus({ provider, id: chapterId }, btn);
+    }
+  });
+});
