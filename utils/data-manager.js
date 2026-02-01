@@ -5,26 +5,40 @@ class DataManager {
     // No initialization needed for Mongoose
   }
 
-  // Load manga library (Lite version for listing)
-  async loadLibrary() {
+  // Load manga library with pagination
+  async loadLibrary(page = 1, limit = 20) {
     try {
-      const mangas = await Manga.find(
-        {},
-        "mangaId title thumbnail latestChapter lastUpdated",
-      )
-        .sort({ lastUpdated: -1 })
-        .lean();
+      const skip = (page - 1) * limit;
+
+      const [mangas, totalMangas] = await Promise.all([
+        Manga.find({}, "mangaId title thumbnail latestChapter lastUpdated")
+          .sort({ lastUpdated: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        Manga.countDocuments({}),
+      ]);
+
       return {
         mangas: mangas.map((m) => ({
           id: m.mangaId,
           ...m,
-          _id: undefined, // Remove internal Mongo ID from output
+          _id: undefined,
         })),
+        totalMangas,
+        totalPages: Math.ceil(totalMangas / limit),
+        currentPage: page,
         count: mangas.length,
       };
     } catch (error) {
       console.error("Error loading library:", error.message);
-      return { mangas: [], count: 0 };
+      return {
+        mangas: [],
+        count: 0,
+        totalMangas: 0,
+        totalPages: 0,
+        currentPage: 1,
+      };
     }
   }
 

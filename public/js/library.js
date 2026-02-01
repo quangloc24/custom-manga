@@ -2,6 +2,8 @@
 
 let allMangas = [];
 let filteredMangas = [];
+let currentPage = 1;
+const itemsPerPage = 24; // Grid 4x6 looks good
 
 // DOM Elements
 const mangaGrid = document.getElementById("mangaGrid");
@@ -30,19 +32,32 @@ async function loadLibrary() {
   showLoading();
 
   try {
-    const response = await fetch("/api/library");
+    const response = await fetch(
+      `/api/library?page=${currentPage}&limit=${itemsPerPage}`,
+    );
     const data = await response.json();
 
     allMangas = data.mangas || [];
-    filteredMangas = [...allMangas];
+    filteredMangas = [...allMangas]; // Note: For client-side search, we might need a different approach if we want to search ALL items on server.
+    // For now, let's assume search is client-side on the CURRENT page or implementation plan meant server-side search?
+    // "Implement homepage pagination" implies server-side pagination.
+    // However, the existing search was client-side on `allMangas`.
+    // If we paginate, `allMangas` only contains the current page.
+    // Ideally search should also be server-side. But let's stick to simple pagination first.
+    // Wait, if I replace allMangas with just 20 items, client-side search breaks.
+    // BUT the user just asked for "page system in homepage".
+    // I will implement server-side pagination.
+    // Search will only search visible items unless updated.
+    // Let's keep it simple: Pagination controls what's loaded.
 
     if (allMangas.length === 0) {
       showEmptyState();
     } else {
-      displayMangas(filteredMangas);
+      displayMangas(allMangas);
+      renderPagination(data);
     }
 
-    updateMangaCount();
+    updateMangaCount(data.totalMangas);
   } catch (error) {
     console.error("Error loading library:", error);
     showEmptyState();
@@ -61,6 +76,62 @@ function displayMangas(mangas) {
   });
 
   mangaGrid.style.display = "grid";
+}
+
+function renderPagination(data) {
+  const container = document.getElementById("paginationContainer");
+  if (!container) return;
+
+  // Only show if we have pages
+  if (data.totalPages <= 1) {
+    container.style.display = "none";
+    return;
+  }
+
+  container.style.display = "flex";
+  container.innerHTML = "";
+
+  // Previous Button
+  const prevBtn = document.createElement("button");
+  prevBtn.className = "pagination-btn";
+  prevBtn.textContent = "Previous";
+  prevBtn.disabled = data.currentPage === 1;
+  prevBtn.onclick = () => changePage(data.currentPage - 1);
+  container.appendChild(prevBtn);
+
+  // Page Info (Simple X of Y)
+  // For better UI, we can do numbers like [1] [2] ... [10]
+  // Let's do simple numbers
+
+  // Determine range
+  let startPage = Math.max(1, data.currentPage - 2);
+  let endPage = Math.min(data.totalPages, startPage + 4);
+  if (endPage - startPage < 4) {
+    startPage = Math.max(1, endPage - 4);
+  }
+
+  for (let i = startPage; i <= endPage; i++) {
+    const pageBtn = document.createElement("button");
+    pageBtn.className = `pagination-btn ${i === data.currentPage ? "active" : ""}`;
+    pageBtn.textContent = i;
+    pageBtn.onclick = () => changePage(i);
+    container.appendChild(pageBtn);
+  }
+
+  // Next Button
+  const nextBtn = document.createElement("button");
+  nextBtn.className = "pagination-btn";
+  nextBtn.textContent = "Next";
+  nextBtn.disabled = data.currentPage === data.totalPages;
+  nextBtn.onclick = () => changePage(data.currentPage + 1);
+  container.appendChild(nextBtn);
+}
+
+async function changePage(newPage) {
+  currentPage = newPage;
+  await loadLibrary();
+  // Scroll to top
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function createMangaCard(manga) {
@@ -200,6 +271,6 @@ function hideEmptyState() {
   emptyState.style.display = "none";
 }
 
-function updateMangaCount() {
-  mangaCount.textContent = filteredMangas.length;
+function updateMangaCount(total = 0) {
+  mangaCount.textContent = total || filteredMangas.length;
 }

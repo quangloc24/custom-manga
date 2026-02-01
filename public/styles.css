@@ -549,7 +549,47 @@ html {
 }
 
 @keyframes spin {
-  to {
+    to {
     transform: rotate(360deg);
   }
+}
+
+/* Pagination */
+.pagination-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 2rem;
+  margin-bottom: 2rem;
+  padding-bottom: 2rem;
+}
+
+.pagination-btn {
+  background: var(--bg-card); /* Using existing var */
+  border: 1px solid var(--border-color); /* Using existing var */
+  color: var(--text-secondary); /* Using existing var */
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background: var(--bg-hover); /* Assuming this exists or similar */
+  color: var(--text-primary);
+  border-color: var(--accent-primary);
+}
+
+.pagination-btn.active {
+  background: var(--accent-primary);
+  color: white;
+  border-color: var(--accent-primary);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

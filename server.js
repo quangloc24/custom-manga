@@ -200,7 +200,10 @@ app.get("/api/health", (req, res) => {
 // Get manga library
 app.get("/api/library", async (req, res) => {
   try {
-    const library = await dataManager.loadLibrary();
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+
+    const library = await dataManager.loadLibrary(page, limit);
     res.json(library);
   } catch (error) {
     console.error("Library error:", error);
