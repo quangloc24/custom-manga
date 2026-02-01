@@ -240,6 +240,71 @@ This chapter may be incomplete or failed to download properly.
 
     return path.join(chapterPath, image.filename);
   }
+  // Get all downloaded chapters for a manga
+  getMangaDownloads(mangaId) {
+    const safeMangaId = mangaId.replace(/[^a-z0-9-]/gi, "_");
+    const mangaDir = path.join(this.downloadDir, safeMangaId);
+
+    if (!fs.existsSync(mangaDir)) {
+      return {};
+    }
+
+    const downloads = {};
+
+    try {
+      // Iterate providers
+      const providers = fs.readdirSync(mangaDir);
+      for (const provider of providers) {
+        if (provider.startsWith(".")) continue; // Skip hidden files
+        const providerDir = path.join(mangaDir, provider);
+
+        if (!fs.statSync(providerDir).isDirectory()) continue;
+
+        // Iterate chapters
+        const chapters = fs.readdirSync(providerDir);
+        for (const chapterId of chapters) {
+          if (chapterId.startsWith(".")) continue;
+          const chapterDir = path.join(providerDir, chapterId);
+          const metadataPath = path.join(chapterDir, "metadata.json");
+
+          if (fs.existsSync(metadataPath)) {
+            try {
+              const hasIssue = fs.existsSync(
+                path.join(chapterDir, "ISSUE.txt"),
+              );
+              // Use un-sanitized chapter ID if possible, but we only have safe ID from folder.
+              // Actually, we should probably read the metadata to get the real ID,
+              // but determining presence by ID (folder name) might be faster if frontend sends safe ID?
+              // The frontend sends the real ID. The folder name is the SAFE ID.
+              // So we MUST read metadata to get the real ID to map it back correctly.
+              // OR, we assume the frontend can hash/safen it same way?
+              // No, safer to read metadata.
+
+              const metadata = JSON.parse(
+                fs.readFileSync(metadataPath, "utf8"),
+              );
+              // Map key = original chapter ID
+              downloads[metadata.chapterId] = {
+                downloaded: true,
+                hasIssue: hasIssue,
+                totalPages: metadata.totalPages,
+                downloadedPages: metadata.downloadedPages,
+              };
+            } catch (e) {
+              console.error(
+                `Error reading metadata for ${chapterId}:`,
+                e.message,
+              );
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error scanning downloads:", error);
+    }
+
+    return downloads;
+  }
 }
 
 module.exports = ChapterDownloadManager;

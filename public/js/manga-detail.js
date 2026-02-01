@@ -74,6 +74,11 @@ function updateChapterTimes() {
   });
 }
 
+// Map to store download status for all chapters
+let downloadStatusMap = {};
+
+// ... (existing code)
+
 async function loadMangaDetails() {
   if (!mangaId) {
     alert("No manga ID provided");
@@ -93,8 +98,7 @@ async function loadMangaDetails() {
     if (metaResponse.ok) {
       metaManga = await metaResponse.json();
 
-      // If metadata exists but hasn't been fully scraped (detailsScraped is false),
-      // DO NOT render the "Unknown" UI. Go straight to scraping.
+      // If metadata exists but hasn't been fully scraped, trigger auto-scrape
       if (!metaManga.detailsScraped) {
         console.log(
           "Manga metadata exists but not scraped. Triggering auto-scrape...",
@@ -135,15 +139,19 @@ async function loadMangaDetails() {
       return;
     }
 
-    // Check if chapters are empty (and we expected them)
-    // Note: Some manga might legitimately have 0 chapters if new.
-    // But usually we want to try scraping at least once if 0.
-    // Currently, we rely on 'detailsScraped' flag in model, but frontend doesn't see it easily.
-    // Let's stick to: if 0 chapters and we didn't just scrape, maybe warn?
-    // For now, let's allow 0 chapters if the document exists to prevent loops.
-    // OR: Only scrape if manga.details is completely missing.
+    // Parallel Fetch: Get download statuses for ALL chapters at once
+    try {
+      const statusResponse = await fetch(
+        `/api/download/status/${mangaId}?_t=${timestamp}`,
+      );
+      if (statusResponse.ok) {
+        downloadStatusMap = await statusResponse.json();
+      }
+    } catch (e) {
+      console.error("Failed to fetch download statuses:", e);
+    }
 
-    // Render full details
+    // Render full details (updates chapter list)
     displayMangaDetails(manga, false);
   } catch (error) {
     console.error("Error loading manga:", error);
@@ -153,15 +161,11 @@ async function loadMangaDetails() {
       document.getElementById("mangaTitle").textContent !== "Loading...";
 
     if (!isLiteRendered) {
-      // If we failed before showing ANYTHING, maybe it's a connection issue.
-      // Showing an error is safer than scraping loops.
       const loadingText = loadingContainer.querySelector("p");
       if (loadingText)
         loadingText.textContent = "Error loading details. Retrying...";
       setTimeout(loadMangaDetails, 3000); // Retry once after 3s
     } else {
-      // We showed title, but chapters failed.
-      // Update the chapter list spinner to show error
       const chaptersList = document.getElementById("chaptersList");
       if (chaptersList) {
         chaptersList.innerHTML = `
@@ -174,6 +178,93 @@ async function loadMangaDetails() {
     }
   }
 }
+
+function displayChapters(chapters) {
+  chaptersList.innerHTML = "";
+  chapterCount.textContent = chapters.length;
+
+  if (chapters.length === 0) {
+    chaptersList.innerHTML = '<div class="no-chapters">No chapters found</div>';
+    return;
+  }
+
+  // Create provider filter
+  createProviderFilter(chapters);
+
+  // Filter chapters based on selected provider
+  const filteredChapters =
+    selectedProvider === "all"
+      ? chapters
+      : chapters.filter((ch) => ch.provider === selectedProvider);
+
+  // Chapters are already sorted by scraper (descending)
+  filteredChapters.forEach((chapter) => {
+    const chapterEl = document.createElement("div");
+    chapterEl.className = "chapter-item";
+    chapterEl.dataset.provider = chapter.provider || "Unknown";
+
+    const providerText = chapter.provider || "Unknown";
+    const timeText = chapter.relativeTime || "";
+
+    chapterEl.innerHTML = `
+      <div class="chapter-left">
+        <span class="chapter-number">Ch. ${chapter.number}</span>
+      </div>
+      <div class="chapter-right">
+        <span class="chapter-provider">${providerText}</span>
+        ${timeText ? `<span class="chapter-time" data-upload-date="${chapter.uploadDate || ""}">${timeText}</span>` : ""}
+        <button class="download-btn" data-chapter-id="${chapter.id}" title="Download chapter">
+          📥
+        </button>
+      </div>
+    `;
+
+    // CHECK STATUS FROM MAP (Instant, no network request)
+    const buttonEl = chapterEl.querySelector(".download-btn");
+    const status = downloadStatusMap[chapter.id];
+
+    if (status && status.downloaded) {
+      buttonEl.textContent = "✓";
+      buttonEl.title = status.hasIssue
+        ? `Issue: Only ${status.downloadedPages} pages downloaded`
+        : `Downloaded ${status.downloadedPages}/${status.totalPages} pages`;
+      buttonEl.classList.add("downloaded");
+
+      if (status.hasIssue) {
+        buttonEl.textContent = "⚠️";
+        buttonEl.classList.remove("downloaded");
+        buttonEl.classList.add("issue");
+      }
+    }
+
+    // Add click handler for reading chapter
+    const chapterLeft = chapterEl.querySelector(".chapter-left");
+    chapterLeft.style.cursor = "pointer";
+    chapterLeft.addEventListener("click", () => {
+      console.log("Chapter clicked:", chapter.number, chapter.url);
+      const params = new URLSearchParams();
+      params.append("url", chapter.url);
+      params.append("mangaId", mangaId);
+      params.append("provider", chapter.provider || "Unknown");
+      params.append("chapterId", chapter.id);
+      params.append("chapterNumber", chapter.number);
+
+      window.location.href = `reader.html?${params.toString()}`;
+    });
+
+    // Add click handler for download button
+    const downloadBtn = chapterEl.querySelector(".download-btn");
+    downloadBtn.addEventListener("click", async (e) => {
+      e.stopPropagation(); // Prevent chapter click
+      await downloadChapter(chapter, downloadBtn);
+    });
+
+    chaptersList.appendChild(chapterEl);
+  });
+}
+// Remove the old checkDownloadStatus function or keep it for single updates?
+// We might need it for *after* a download finishes to update just that one.
+// So let's keep it but NOT call it in the loop.
 
 async function autoScrapeMangaDetails() {
   loadingContainer.style.display = "flex";
@@ -430,8 +521,23 @@ function displayChapters(chapters) {
       </div>
     `;
 
-    // Check download status immediately
-    checkDownloadStatus(chapter, chapterEl.querySelector(".download-btn"));
+    // CHECK STATUS FROM MAP (Instant, no network request)
+    const buttonEl = chapterEl.querySelector(".download-btn");
+    const status = downloadStatusMap[chapter.id];
+
+    if (status && status.downloaded) {
+      buttonEl.textContent = "✓";
+      buttonEl.title = status.hasIssue
+        ? `Issue: Only ${status.downloadedPages} pages downloaded`
+        : `Downloaded ${status.downloadedPages}/${status.totalPages} pages`;
+      buttonEl.classList.add("downloaded");
+
+      if (status.hasIssue) {
+        buttonEl.textContent = "⚠️";
+        buttonEl.classList.remove("downloaded");
+        buttonEl.classList.add("issue");
+      }
+    }
 
     // Add click handler for reading chapter
     const chapterLeft = chapterEl.querySelector(".chapter-left");

@@ -398,6 +398,18 @@ app.get("/api/download/status/:mangaId/:provider/:chapterId", (req, res) => {
   }
 });
 
+// Get all downloaded chapters for a manga (Batch)
+app.get("/api/download/status/:mangaId", (req, res) => {
+  try {
+    const { mangaId } = req.params;
+    const downloads = downloadManager.getMangaDownloads(mangaId);
+    res.json(downloads);
+  } catch (error) {
+    console.error("Batch status check error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // --- User / Auth Routes ---
 
 // Register
