@@ -59,12 +59,28 @@ class ChapterDownloadManager {
 
       // Compress image if enabled
       if (this.compressionEnabled) {
+        // Check image dimensions first to avoid WebP limits
+        const image = sharp(response.data);
+        const metadata = await image.metadata();
+
+        // WebP has a hard limit of 16383px in dimension
+        if (metadata.height > 16000 || metadata.width > 16000) {
+          console.log(
+            `Image too large for WebP (${metadata.width}x${metadata.height}), saving as JPEG`,
+          );
+          const jpgPath = savePath.replace(/\.[^.]+$/, ".jpg");
+          await image
+            .jpeg({ quality: this.compressionQuality, mozjpeg: true })
+            .toFile(jpgPath);
+          return jpgPath;
+        }
+
         const compressedPath = savePath.replace(
           /\.[^.]+$/,
           `.${this.imageFormat}`,
         );
 
-        await sharp(response.data)
+        await image
           .webp({ quality: this.compressionQuality })
           .toFile(compressedPath);
 
@@ -138,6 +154,9 @@ class ChapterDownloadManager {
 
       await Promise.all(downloadPromises);
     }
+
+    // Sort images by page number to ensure correct order
+    downloadedImages.sort((a, b) => a.page - b.page);
 
     // Save metadata
     const metadata = {

@@ -319,11 +319,12 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
+  gap: 0;
   background: var(--bg-secondary);
-  padding: 20px;
+  padding: 0;
   border-radius: 20px;
   border: 1px solid var(--border-color);
+  overflow: hidden; /* Ensure rounded corners clip images */
 }
 
 .manga-image-wrapper {
@@ -462,6 +463,29 @@ body {
 
   .images-container {
     padding: 10px;
+  }
+  
+  /* Compact Reader Header for Mobile */
+  .header {
+    padding: 15px 10px;
+    margin-bottom: 10px;
+    border-radius: 0 0 15px 15px; /* Rounded bottom only */
+  }
+
+  .header .logo {
+    font-size: 1.5rem;
+    margin-bottom: 5px;
+  }
+
+  .header .chapter-title {
+    font-size: 1.1rem;
+    margin-top: 5px;
+  }
+
+  /* Hide input/search on mobile reader to focus on content */
+  /* Hide input/search on mobile reader to focus on content */
+  .input-section {
+    display: none;
   }
 }
 
