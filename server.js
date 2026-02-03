@@ -388,6 +388,40 @@ app.post("/api/download/chapter", async (req, res) => {
   }
 });
 
+// Batch Download (Server-Side)
+app.post("/api/download/batch", async (req, res) => {
+  try {
+    const { requests, delay } = req.body;
+
+    if (!requests || !Array.isArray(requests) || requests.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid requests array",
+      });
+    }
+
+    const delaySeconds = parseInt(delay) || 5;
+
+    // Start background processing
+    downloadManager.addBatch(requests, delaySeconds, scraper);
+
+    res.json({
+      success: true,
+      message: `Batch download started for ${requests.length} chapters`,
+      queued: requests.length,
+    });
+  } catch (error) {
+    console.error("Batch API error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get Batch Queue Status
+app.get("/api/download/batch/status", (req, res) => {
+  const status = downloadManager.getQueueStatus();
+  res.json({ success: true, ...status });
+});
+
 // Get chapter download status
 app.get("/api/download/status/:mangaId/:provider/:chapterId", (req, res) => {
   try {

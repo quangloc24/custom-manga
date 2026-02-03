@@ -21,6 +21,100 @@ class ChapterDownloadManager {
     if (!fs.existsSync(this.downloadDir)) {
       fs.mkdirSync(this.downloadDir, { recursive: true });
     }
+
+    // Queue for batch downloads
+    this.queue = [];
+    this.isProcessing = false;
+  }
+
+  // --- Queue Management ---
+
+  getQueueStatus() {
+    return {
+      isProcessing: this.isProcessing,
+      queueLength: this.queue.length,
+    };
+  }
+
+  async addBatch(tasks, delay, scraper) {
+    console.log(
+      `Adding ${tasks.length} tasks to download queue (Delay: ${delay}s)`,
+    );
+    // Add tasks to queue
+    tasks.forEach((task) => {
+      this.queue.push({ ...task, delay, scraper });
+    });
+
+    // Start processing if not already running
+    if (!this.isProcessing) {
+      this.processQueue();
+    }
+
+    return {
+      success: true,
+      queued: tasks.length,
+      totalQueue: this.queue.length,
+    };
+  }
+
+  async processQueue() {
+    if (this.queue.length === 0) {
+      this.isProcessing = false;
+      console.log("Queue empty. Batch processing finished.");
+      return;
+    }
+
+    this.isProcessing = true;
+    const task = this.queue.shift(); // FIFO
+
+    try {
+      console.log(
+        `Processing queue item: Ch. ${task.chapterNumber} (${task.provider})`,
+      );
+
+      // 1. Scrape (if needed)
+      let images = [];
+      if (task.images && task.images.length > 0) {
+        images = task.images;
+      } else if (task.url && task.scraper) {
+        // Need to scrape first
+        console.log(`  Scraping images for ${task.url}...`);
+        const scrapeResult = await task.scraper.scrapeChapter(task.url);
+        if (scrapeResult.success && scrapeResult.images) {
+          images = scrapeResult.images;
+          console.log(`  Found ${images.length} images.`);
+        } else {
+          throw new Error("Failed to scrape images for batch item");
+        }
+      } else {
+        throw new Error("No images or scraper provided for batch item");
+      }
+
+      // 2. Download
+      await this.downloadChapter(
+        task.mangaId,
+        task.provider,
+        task.chapterId,
+        task.chapterNumber,
+        images,
+        task.scraper,
+      );
+
+      // 3. Delay
+      if (this.queue.length > 0) {
+        console.log(`  Waiting ${task.delay}s before next download...`);
+        await new Promise((r) => setTimeout(r, task.delay * 1000));
+      }
+    } catch (error) {
+      console.error(
+        `Error processing batch item Ch. ${task.chapterNumber}:`,
+        error.message,
+      );
+      // Continue to next item despite error
+    }
+
+    // Process next
+    this.processQueue();
   }
 
   // Get chapter directory path

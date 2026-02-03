@@ -622,6 +622,8 @@ async function downloadChapter(chapter, buttonEl) {
         buttonEl.disabled = false;
       }, 2000);
     }
+
+    return result; // Return result for batch processing
   } catch (error) {
     console.error("Download error:", error);
     buttonEl.textContent = "❌";
@@ -630,6 +632,7 @@ async function downloadChapter(chapter, buttonEl) {
       buttonEl.textContent = originalText;
       buttonEl.disabled = false;
     }, 2000);
+    throw error; // Throw for batch processing
   }
 }
 
@@ -729,6 +732,302 @@ function createProviderFilter(chapters) {
       displayChapters(allChapters);
     });
   });
+
+  // Add Download All Button if not exists
+  if (!filterContainer.querySelector("#batchDownloadBtn")) {
+    const batchBtn = document.createElement("button");
+    batchBtn.id = "batchDownloadBtn";
+    batchBtn.className = "batch-download-btn";
+    batchBtn.innerHTML = "📥 Download Options";
+    batchBtn.onclick = openDownloadModal;
+    filterContainer.appendChild(batchBtn);
+  }
+}
+
+// --- Batch Download Feature ---
+
+let isDownloading = false;
+let shouldStopDownload = false;
+let downloadModalInitialized = false;
+
+function initDownloadModal() {
+  if (downloadModalInitialized) return;
+
+  // Bind Events
+  const closeBtn = document.getElementById("closeDownloadModal");
+  const cancelBtn = document.getElementById("cancelDownloadBtn");
+  const startBtn = document.getElementById("startDownloadBtn");
+
+  if (closeBtn) closeBtn.onclick = closeDownloadModal;
+  if (cancelBtn) cancelBtn.onclick = closeDownloadModal;
+  if (startBtn) startBtn.onclick = startBatchDownload;
+
+  // Update stats on input change
+  const providerSelect = document.getElementById("downloadProviderSelect");
+  const delayInput = document.getElementById("downloadDelayInput");
+  const startInput = document.getElementById("downloadStartInput");
+  const endInput = document.getElementById("downloadEndInput");
+
+  if (providerSelect) {
+    providerSelect.onchange = () => {
+      autoFillRange();
+      updateDownloadStats();
+    };
+  }
+  if (delayInput) delayInput.oninput = updateDownloadStats;
+  if (startInput) startInput.oninput = updateDownloadStats;
+  if (endInput) endInput.oninput = updateDownloadStats;
+
+  downloadModalInitialized = true;
+}
+
+function autoFillRange() {
+  const provider = document.getElementById("downloadProviderSelect").value;
+  // Get all chapters for provider
+  let chapters = allChapters;
+  if (provider !== "all") {
+    chapters = chapters.filter((ch) => (ch.provider || "Unknown") === provider);
+  }
+
+  if (chapters.length >= 0) {
+    const numbers = chapters
+      .map((ch) => parseFloat(ch.number))
+      .filter((n) => !isNaN(n));
+    if (numbers.length >= 0) {
+      const min = Math.min(...numbers);
+      const max = Math.max(...numbers);
+      const startInput = document.getElementById("downloadStartInput");
+      const endInput = document.getElementById("downloadEndInput");
+      if (startInput) startInput.value = min;
+      if (endInput) endInput.value = max;
+    }
+  }
+}
+
+function openDownloadModal() {
+  // Ensure the modal HTML exists in the DOM (e.g., pre-loaded or created elsewhere)
+  // If not, you might need to add a check or create it here if it's not guaranteed to exist.
+  // For this change, we assume the modal HTML is already present.
+
+  initDownloadModal();
+
+  // Populate Providers
+  const select = document.getElementById("downloadProviderSelect");
+  const providers = [
+    ...new Set(allChapters.map((ch) => ch.provider || "Unknown")),
+  ];
+
+  select.innerHTML = "";
+  // Add All option
+  const allOpt = document.createElement("option");
+  allOpt.value = "all";
+  allOpt.textContent = "All Providers (Not Recommended)";
+  select.appendChild(allOpt);
+
+  // Add specific providers
+  providers.forEach((p) => {
+    const opt = document.createElement("option");
+    opt.value = p;
+    opt.textContent = p;
+    select.appendChild(opt);
+  });
+
+  // Select current filter if valid
+  if (selectedProvider !== "all" && providers.includes(selectedProvider)) {
+    select.value = selectedProvider;
+  }
+
+  autoFillRange(); // Auto fill based on selection
+
+  updateDownloadStats();
+
+  document.getElementById("downloadModal").style.display = "flex";
+}
+
+function closeDownloadModal() {
+  const modal = document.getElementById("downloadModal");
+  if (modal) modal.style.display = "none";
+}
+
+function updateDownloadStats() {
+  const provider = document.getElementById("downloadProviderSelect").value;
+  const delay =
+    parseInt(document.getElementById("downloadDelayInput").value) || 3;
+
+  const targets = getTargetChapters(provider);
+  const count = targets.length;
+
+  // Estimate: (Avg 5s download + delay) * count
+  const estimatedSeconds = count * (5 + delay);
+  const mins = Math.floor(estimatedSeconds / 60);
+
+  document.getElementById("downloadTotalCount").textContent =
+    `Chapters to download: ${count}`;
+  document.getElementById("downloadEstimatedTime").textContent =
+    `Est. time: ~${mins}m`;
+}
+
+function getTargetChapters(provider) {
+  // 1. Filter by provider
+  let chapters = allChapters;
+  if (provider !== "all") {
+    chapters = chapters.filter((ch) => (ch.provider || "Unknown") === provider);
+  }
+
+  // 2. Filter by Range
+  const start = parseFloat(document.getElementById("downloadStartInput").value);
+  const end = parseFloat(document.getElementById("downloadEndInput").value);
+
+  if (!isNaN(start)) {
+    chapters = chapters.filter((ch) => parseFloat(ch.number) >= start);
+  }
+  if (!isNaN(end)) {
+    chapters = chapters.filter((ch) => parseFloat(ch.number) <= end);
+  }
+
+  // 3. Filter out ALREADY downloaded chapters
+  return chapters.filter((ch) => {
+    const stored = downloadStatusMap[ch.id];
+    return !stored || !stored.downloaded;
+  });
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function startBatchDownload() {
+  const provider = document.getElementById("downloadProviderSelect").value;
+  const delaySec =
+    parseInt(document.getElementById("downloadDelayInput").value) || 3;
+
+  const targets = getTargetChapters(provider);
+
+  if (targets.length === 0) {
+    alert(
+      "No eligible chapters found to download (Check range or already downloaded status).",
+    );
+    return;
+  }
+
+  // Sort targets by chapter number (Ascending: Lowest to Highest)
+  targets.sort((a, b) => {
+    const numA = parseFloat(a.number);
+    const numB = parseFloat(b.number);
+    return numA - numB;
+  });
+
+  const confirmed = await showCustomConfirm(
+    `Start background download for <strong>${targets.length}</strong> chapters?<br><br>
+     Range: Ch. ${targets[0].number} ➔ Ch. ${targets[targets.length - 1].number}<br>
+     <small>You can close this tab afterwards.</small>`,
+  );
+
+  if (!confirmed) return;
+
+  // Prepare payload
+  const requests = targets.map((ch) => ({
+    mangaId: mangaId,
+    provider: ch.provider || "Unknown",
+    chapterId: ch.id,
+    chapterNumber: ch.number,
+    url: ch.url,
+    // Note: Scraper instance is on server side
+  }));
+
+  try {
+    // Disable button
+    const btn = document.getElementById("startDownloadBtn");
+    const originalText = btn.textContent;
+    btn.textContent = "Sending to Server...";
+    btn.disabled = true;
+
+    const response = await fetch("/api/download/batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requests, delay: delaySec }),
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      toast.success(`Batch started! ${result.queued} chapters queued.`);
+
+      document.getElementById("downloadProgressArea").style.display = "block";
+      document.getElementById("downloadProgressText").innerHTML = `
+            ✅ <strong>Batch Started!</strong><br>
+            Server is downloading ${result.queued} chapters.<br>
+            You can close this tab. Notifying when done...
+          `;
+      btn.textContent = "Done";
+
+      // Close modal and start monitoring
+      setTimeout(() => {
+        closeDownloadModal();
+        monitorBatchProgress(result.queued);
+      }, 1500);
+    } else {
+      toast.error("Failed to start batch: " + result.error);
+      btn.textContent = originalText;
+      btn.disabled = false;
+    }
+  } catch (error) {
+    console.error("Batch Request Error:", error);
+    toast.error("Network error starting batch download.");
+    document.getElementById("startDownloadBtn").disabled = false;
+  }
+}
+
+let batchMonitorInterval = null;
+
+// Helper to refresh download status map
+async function refreshDownloadStatus() {
+  if (!mangaId) return;
+  const ts = new Date().getTime();
+  try {
+    const statusResponse = await fetch(
+      `/api/download/status/${mangaId}?_t=${ts}`,
+    );
+    if (statusResponse.ok) {
+      const newMap = await statusResponse.json();
+      downloadStatusMap = newMap;
+      updateChapterStatuses();
+    }
+  } catch (e) {
+    console.error("Failed to refresh status:", e);
+  }
+}
+
+async function monitorBatchProgress(initialCount) {
+  if (batchMonitorInterval) clearInterval(batchMonitorInterval);
+
+  let isRunning = true;
+
+  // Initial refresh
+  refreshDownloadStatus();
+
+  batchMonitorInterval = setInterval(async () => {
+    try {
+      const response = await fetch("/api/download/batch/status");
+      const data = await response.json();
+
+      if (data.success) {
+        // progressive update
+        await refreshDownloadStatus();
+
+        // If it was running and now it's not => Finished
+        if (isRunning && !data.isProcessing && data.queueLength === 0) {
+          clearInterval(batchMonitorInterval);
+          toast.success("Batch Download Completed! 🎉", 5000);
+          await refreshDownloadStatus();
+        }
+
+        isRunning = data.isProcessing;
+      }
+    } catch (e) {
+      console.error("Error monitoring batch:", e);
+    }
+  }, 6000);
 }
 
 async function scrapeMangaDetails() {
@@ -909,6 +1208,43 @@ window.addEventListener("pageshow", async () => {
       updateChapterStatuses();
     }
   } catch (e) {
-    console.error("Pageshow status update failed:", e);
+    console.error("Failed to refresh status:", e);
   }
 });
+
+// --- Helper for Custom Confirmation Modal ---
+function showCustomConfirm(messageHtml) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById("confirmModal");
+    const msgEl = document.getElementById("confirmMessage");
+    const okBtn = document.getElementById("confirmOkBtn");
+    const cancelBtn = document.getElementById("confirmCancelBtn");
+
+    if (!modal || !msgEl || !okBtn || !cancelBtn) {
+      // Fallback if modal missing
+      resolve(
+        confirm(messageHtml.replace(/<br>/g, "\n").replace(/<[^>]*>/g, "")),
+      );
+      return;
+    }
+
+    msgEl.innerHTML = messageHtml;
+    modal.style.display = "flex";
+
+    const cleanup = () => {
+      modal.style.display = "none";
+      okBtn.onclick = null;
+      cancelBtn.onclick = null;
+    };
+
+    okBtn.onclick = () => {
+      cleanup();
+      resolve(true);
+    };
+
+    cancelBtn.onclick = () => {
+      cleanup();
+      resolve(false);
+    };
+  });
+}
