@@ -16,6 +16,7 @@ class ChapterDownloadManager {
       10,
     );
     this.imageFormat = process.env.IMAGE_FORMAT || "webp";
+    this.maxImageWidth = parseInt(process.env.IMAGE_RESIZE_WIDTH || "0", 10);
 
     // Create downloads directory if it doesn't exist
     if (!fs.existsSync(this.downloadDir)) {
@@ -157,8 +158,18 @@ class ChapterDownloadManager {
         const image = sharp(response.data);
         const metadata = await image.metadata();
 
+        if (this.maxImageWidth > 0 && metadata.width > this.maxImageWidth) {
+          console.log(
+            `Resizing image from ${metadata.width}px to ${this.maxImageWidth}px`,
+          );
+          image.resize({ width: this.maxImageWidth, withoutEnlargement: true });
+        }
+
         // WebP has a hard limit of 16383px in dimension
-        if (metadata.height > 16000 || metadata.width > 16000) {
+        if (
+          (metadata.height > 16000 || metadata.width > 16000) &&
+          this.imageFormat === "webp"
+        ) {
           console.log(
             `Image too large for WebP (${metadata.width}x${metadata.height}), saving as JPEG`,
           );
@@ -174,9 +185,31 @@ class ChapterDownloadManager {
           `.${this.imageFormat}`,
         );
 
-        await image
-          .webp({ quality: this.compressionQuality })
-          .toFile(compressedPath);
+        // Convert based on format
+        switch (this.imageFormat.toLowerCase()) {
+          case "avif":
+            await image
+              .avif({ quality: this.compressionQuality, effort: 4 })
+              .toFile(compressedPath);
+            break;
+          case "jpeg":
+          case "jpg":
+            await image
+              .jpeg({ quality: this.compressionQuality, mozjpeg: true })
+              .toFile(compressedPath);
+            break;
+          case "png":
+            await image
+              .png({ quality: this.compressionQuality, compressionLevel: 8 })
+              .toFile(compressedPath);
+            break;
+          case "webp":
+          default:
+            await image
+              .webp({ quality: this.compressionQuality })
+              .toFile(compressedPath);
+            break;
+        }
 
         return compressedPath;
       } else {
