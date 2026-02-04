@@ -491,89 +491,170 @@ function displayTags(container, tags) {
 let allChapters = []; // Store all chapters for filtering
 let selectedProvider = "all"; // Current filter
 
-function displayChapters(chapters) {
-  allChapters = chapters; // Store for filtering
+// --- Sorting & Filtering ---
+let currentSortOrder = "desc";
+let currentSearchQuery = "";
+
+// Initialize Sort/Search Listeners
+function initChapterControls() {
+  const sortBtn = document.getElementById("sortChapterBtn");
+  const searchInput = document.getElementById("chapterSearchInput");
+
+  if (sortBtn && !sortBtn.dataset.bound) {
+    sortBtn.addEventListener("click", () => {
+      currentSortOrder = currentSortOrder === "desc" ? "asc" : "desc";
+      // Update Icon
+      const span = sortBtn.querySelector("span");
+      if (span)
+        span.textContent =
+          currentSortOrder === "desc" ? "↓ Chapter" : "↑ Chapter";
+      displayChapters(allChapters, false); // false to skip filter re-creation
+    });
+    sortBtn.dataset.bound = "true";
+  }
+
+  if (searchInput && !searchInput.dataset.bound) {
+    searchInput.addEventListener("input", (e) => {
+      currentSearchQuery = e.target.value.toLowerCase();
+      displayChapters(allChapters, false);
+    });
+    searchInput.dataset.bound = "true";
+  }
+}
+
+function displayChapters(chapters, shouldUpdateFilters = true) {
+  if (shouldUpdateFilters) {
+    allChapters = chapters;
+    createProviderFilter(chapters);
+
+    // Also init controls here since DOM needs to be ready
+    initChapterControls();
+  }
 
   chaptersList.innerHTML = "";
 
-  if (chapters.length === 0) {
+  if (!chapters || chapters.length === 0) {
     chaptersList.innerHTML = '<p class="no-chapters">No chapters available</p>';
     return;
   }
 
-  // Create provider filter
-  createProviderFilter(chapters);
-
-  // Filter chapters based on selected provider
-  const filteredChapters =
+  // Filter first (Search + Provider)
+  let filtered =
     selectedProvider === "all"
-      ? chapters
-      : chapters.filter((ch) => ch.provider === selectedProvider);
+      ? allChapters
+      : allChapters.filter((ch) => ch.provider === selectedProvider);
 
-  // Chapters are already sorted by scraper (descending)
-  filteredChapters.forEach(async (chapter) => {
+  if (currentSearchQuery) {
+    filtered = filtered.filter(
+      (ch) =>
+        `ch. ${ch.number}`.toLowerCase().includes(currentSearchQuery) ||
+        ch.number.toString().includes(currentSearchQuery),
+    );
+  }
+
+  // Sort
+  filtered.sort((a, b) => {
+    const numA = parseFloat(a.number);
+    const numB = parseFloat(b.number);
+    if (isNaN(numA) || isNaN(numB)) return 0;
+    return currentSortOrder === "desc" ? numB - numA : numA - numB;
+  });
+
+  if (filtered.length === 0) {
+    chaptersList.innerHTML =
+      '<p class="no-chapters">No chapters match your search.</p>';
+    return;
+  }
+
+  filtered.forEach((chapter) => {
     const chapterEl = document.createElement("div");
-    chapterEl.className = "chapter-item";
-    chapterEl.dataset.provider = chapter.provider || "Unknown";
+    chapterEl.className = "chapter-row";
 
-    const providerText = chapter.provider || "Unknown";
     const timeText = chapter.relativeTime || "";
+    const status = downloadStatusMap[chapter.id];
+    const isDownloaded = status && status.downloaded;
+    const hasIssue = status && status.hasIssue;
 
+    // Use grid columns matching header
     chapterEl.innerHTML = `
-      <div class="chapter-left">
-        <span class="chapter-number">Ch. ${chapter.number}</span>
+      <div class="col-chapter">
+          <span class="chapter-number">Ch. ${chapter.number}</span>
       </div>
-      <div class="chapter-right">
-        <span class="chapter-provider">${providerText}</span>
-        ${timeText ? `<span class="chapter-time" data-upload-date="${chapter.uploadDate || ""}">${timeText}</span>` : ""}
-        <button class="download-btn" data-chapter-id="${chapter.id}" title="Download chapter">
-          📥
-        </button>
+      <div class="col-provider">
+          <span class="provider-badge">${chapter.provider || "Unknown"}</span>
+      </div>
+      <div class="col-updated">
+          ${timeText ? `<span class="chapter-time">${timeText}</span>` : ""}
+      </div>
+      <div class="col-download">
+          <button class="download-btn-mini ${isDownloaded ? "downloaded" : ""} ${hasIssue ? "issue" : ""}" 
+                  data-chapter-id="${chapter.id}"
+                  title="${isDownloaded ? (hasIssue ? "Issue: Incomplete" : "Downloaded") : "Download"}">
+             ${isDownloaded ? (hasIssue ? "⚠️" : "✅") : "⬇️"}
+          </button>
       </div>
     `;
 
-    // CHECK STATUS FROM MAP (Instant, no network request)
-    const buttonEl = chapterEl.querySelector(".download-btn");
-    const status = downloadStatusMap[chapter.id];
+    // Click on row to read
+    chapterEl.addEventListener("click", (e) => {
+      if (e.target.closest("button")) return; // Ignore button clicks
 
-    if (status && status.downloaded) {
-      buttonEl.textContent = "✓";
-      buttonEl.title = status.hasIssue
-        ? `Issue: Only ${status.downloadedPages} pages downloaded`
-        : `Downloaded ${status.downloadedPages}/${status.totalPages} pages`;
-      buttonEl.classList.add("downloaded");
-
-      if (status.hasIssue) {
-        buttonEl.textContent = "⚠️";
-        buttonEl.classList.remove("downloaded");
-        buttonEl.classList.add("issue");
-      }
-    }
-
-    // Add click handler for reading chapter
-    const chapterLeft = chapterEl.querySelector(".chapter-left");
-    chapterLeft.style.cursor = "pointer";
-    chapterLeft.addEventListener("click", () => {
-      console.log("Chapter clicked:", chapter.number, chapter.url);
       const params = new URLSearchParams();
       params.append("url", chapter.url);
       params.append("mangaId", mangaId);
       params.append("provider", chapter.provider || "Unknown");
       params.append("chapterId", chapter.id);
       params.append("chapterNumber", chapter.number);
-
       window.location.href = `reader.html?${params.toString()}`;
     });
 
-    // Add click handler for download button
-    const downloadBtn = chapterEl.querySelector(".download-btn");
-    downloadBtn.addEventListener("click", async (e) => {
-      e.stopPropagation(); // Prevent chapter click
-      await downloadChapter(chapter, downloadBtn);
+    // Download Button Logic
+    const btn = chapterEl.querySelector("button");
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (
+        btn.classList.contains("downloaded") &&
+        !btn.classList.contains("issue")
+      )
+        return;
+      await downloadChapter(chapter, btn);
     });
 
     chaptersList.appendChild(chapterEl);
   });
+}
+
+function createProviderFilter(chapters) {
+  const select = document.getElementById("providerFilterSelect");
+  if (!select) return;
+
+  const providers = [
+    ...new Set(chapters.map((ch) => ch.provider || "Unknown")),
+  ];
+
+  const currentVal =
+    select.value && select.options.length > 1 ? select.value : "all"; // Preserve if valid
+
+  select.innerHTML = '<option value="all">All Providers</option>';
+
+  providers.forEach((p) => {
+    const opt = document.createElement("option");
+    opt.value = p;
+    opt.textContent = p;
+    select.appendChild(opt);
+  });
+
+  if (providers.includes(currentVal)) {
+    select.value = currentVal;
+  }
+
+  select.onchange = (e) => {
+    selectedProvider = e.target.value;
+    displayChapters(allChapters, false);
+  };
+
+  const dlBtn = document.getElementById("dlOptionsBtn");
+  if (dlBtn) dlBtn.onclick = openDownloadModal;
 }
 
 async function downloadChapter(chapter, buttonEl) {
@@ -682,65 +763,6 @@ async function checkDownloadStatus(chapter, buttonEl) {
     }
   } catch (error) {
     console.error("Error checking download status:", error);
-  }
-}
-
-function createProviderFilter(chapters) {
-  // Get unique providers
-  const providers = [
-    ...new Set(chapters.map((ch) => ch.provider || "Unknown")),
-  ];
-
-  // Check if filter already exists
-  let filterContainer = document.getElementById("providerFilter");
-  if (!filterContainer) {
-    filterContainer = document.createElement("div");
-    filterContainer.id = "providerFilter";
-    filterContainer.className = "provider-filter";
-
-    // Insert before chapters list
-    const chaptersSection = document.querySelector(".chapters-section");
-    const chaptersList = document.getElementById("chaptersList");
-    chaptersSection.insertBefore(filterContainer, chaptersList);
-  }
-
-  filterContainer.innerHTML = `
-    <div class="filter-label">Filter by provider:</div>
-    <div class="filter-buttons">
-      <button class="filter-btn ${selectedProvider === "all" ? "active" : ""}" data-provider="all">
-        All (${chapters.length})
-      </button>
-      ${providers
-        .map((provider) => {
-          const count = chapters.filter(
-            (ch) => (ch.provider || "Unknown") === provider,
-          ).length;
-          return `
-          <button class="filter-btn ${selectedProvider === provider ? "active" : ""}" data-provider="${provider}">
-            ${provider} (${count})
-          </button>
-        `;
-        })
-        .join("")}
-    </div>
-  `;
-
-  // Add click handlers to filter buttons
-  filterContainer.querySelectorAll(".filter-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      selectedProvider = btn.dataset.provider;
-      displayChapters(allChapters);
-    });
-  });
-
-  // Add Download All Button if not exists
-  if (!filterContainer.querySelector("#batchDownloadBtn")) {
-    const batchBtn = document.createElement("button");
-    batchBtn.id = "batchDownloadBtn";
-    batchBtn.className = "batch-download-btn";
-    batchBtn.innerHTML = "📥 Download Options";
-    batchBtn.onclick = openDownloadModal;
-    filterContainer.appendChild(batchBtn);
   }
 }
 

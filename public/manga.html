@@ -144,7 +144,34 @@
 
             <!-- Chapters List -->
             <div class="chapters-section">
-                <h2>Chapters (<span id="chapterCount">0</span>)</h2>
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px;">
+                    <h2>Chapters</h2>
+                    <span style="color: var(--text-secondary); font-size: 0.9rem;">Total: <span id="chapterCount">0</span></span>
+                </div>
+                <div class="chapters-toolbar">
+                    <div class="search-wrapper">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="chapterSearchInput" placeholder="Go to chap..." class="chapter-search-input">
+                    </div>
+                    
+                    <button id="dlOptionsBtn" class="dl-options-btn">
+                        📥 Download Options
+                    </button>
+
+                    <select id="providerFilterSelect" class="provider-filter-select">
+                        <option value="all">All Providers</option>
+                    </select>
+                </div>
+
+                <div class="chapters-header">
+                    <div class="col-chapter" id="sortChapterBtn" style="cursor: pointer;">
+                        <span>↓ Chapter</span>
+                    </div>
+                    <div class="col-provider">Provider</div>
+                    <div class="col-updated">Updated</div>
+                    <div class="col-download">Action</div>
+                </div>
+
                 <div id="chaptersList" class="chapters-list">
                     <!-- Chapters will be inserted here -->
                 </div>

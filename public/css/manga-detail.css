@@ -715,3 +715,241 @@
     background: var(--accent-primary);
     color: white;
 }
+
+/* --- New Chapter List Design --- */
+
+.chapters-toolbar {
+    margin-bottom: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.search-wrapper {
+    position: relative;
+    width: 60%; /* Or fixed width like 300px */
+    max-width: 400px;
+}
+
+.search-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    pointer-events: none;
+}
+
+.chapter-search-input {
+    width: 100%;
+    padding: 10px 10px 10px 35px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.chapter-search-input:focus {
+    border-color: var(--primary-color);
+    background: rgba(255, 255, 255, 0.1);
+    outline: none;
+}
+
+/* Header Row */
+.chapters-header {
+    display: grid;
+    grid-template-columns: 2fr 1.5fr 1fr 100px; /* Added 4th column */
+    padding: 12px 16px;
+    background: rgba(255,255,255,0.03);
+    border-bottom: 1px solid var(--border-color);
+    border-radius: 8px 8px 0 0;
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    align-items: center;
+}
+
+.col-chapter {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: color 0.2s;
+}
+
+.col-chapter:hover {
+    color: var(--text-primary);
+}
+
+.col-download {
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+.col-provider {
+    text-align: left;
+    color: var(--text-secondary);
+}
+
+.col-updated {
+    text-align: right;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 15px;
+}
+
+/* Chapter Rows */
+.chapters-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.chapter-row {
+    display: grid;
+    grid-template-columns: 2fr 1.5fr 1fr; /* Must match header */
+    padding: 14px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    align-items: center;
+    transition: background 0.2s;
+    cursor: pointer;
+}
+
+.chapter-row:last-child {
+    border-bottom: none;
+}
+
+.chapter-row:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.chapter-number {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.provider-badge {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    background: rgba(255,255,255,0.05);
+    padding: 4px 8px;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+.chapter-time {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.download-btn-mini {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 5px;
+    border-radius: 4px;
+    transition: background 0.2s;
+    line-height: 1;
+}
+
+.download-btn-mini:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.download-btn-mini.downloaded {
+    cursor: default;
+    opacity: 0.8;
+}
+
+.download-btn-mini.issue {
+    opacity: 1;
+}
+
+/* Mobile Adjustments */
+@media (max-width: 600px) {
+    .chapters-header, .chapter-row {
+        grid-template-columns: 1fr 1fr; 
+    }
+    
+    .col-provider, .provider-badge {
+        display: none; 
+    }
+}
+
+
+/* Toolbar Layout */
+.chapters-toolbar {
+    margin-bottom: 15px;
+    display: flex;
+    gap: 10px; /* Space between items */
+    align-items: center;
+}
+
+.search-wrapper {
+    position: relative;
+    flex-grow: 1; /* Search takes available space or balanced? User said center button. */
+    /* Let's prevent search from growing too much if we want center alignment appearance */
+    /* Use flex: 1 for equal distribution or just fixed/auto */
+    flex: 1;
+    min-width: 200px;
+}
+
+.dl-options-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.2s;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.dl-options-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--text-secondary);
+}
+
+
+.provider-filter-select {
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.05); /* Dark transparent bg */
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary); /* Light text */
+    font-size: 0.9rem;
+    cursor: pointer;
+    min-width: 150px;
+}
+
+.provider-filter-select option {
+    background-color: var(--bg-card); /* Ensure options have dark background */
+    color: var(--text-primary);
+}
+
+.provider-filter-select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* Mobile: Stack them */
+@media (max-width: 600px) {
+    .chapters-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .search-wrapper, .dl-options-btn, .provider-filter-select {
+        width: 100%;
+        max-width: none;
+    }
+}
