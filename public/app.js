@@ -29,19 +29,46 @@ async function markChapterAsRead(mangaId, chapterId, chapterNumber, provider) {
     if (mangaUser) {
       try {
         const user = JSON.parse(mangaUser);
-        await fetch("/api/user/read-chapter", {
+        const payload = {
+          username: user.username,
+          mangaId,
+          chapterId,
+          chapterNumber,
+          provider,
+        };
+
+        console.log("[DB Sync] Attempting to sync chapter:", payload);
+
+        const response = await fetch("/api/user/read-chapter", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            username: user.username,
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          console.error("[DB Sync] Server responded with error:", {
+            status: response.status,
+            statusText: response.statusText,
+            url: response.url,
+          });
+          const errorText = await response.text();
+          console.error("[DB Sync] Error response body:", errorText);
+        } else {
+          const result = await response.json();
+          console.log("[DB Sync] Successfully synced chapter:", result);
+        }
+      } catch (dbError) {
+        console.error("[DB Sync] Failed to sync to database:", {
+          errorType: dbError.constructor.name,
+          errorMessage: dbError.message,
+          errorStack: dbError.stack,
+          payload: {
             mangaId,
             chapterId,
             chapterNumber,
             provider,
-          }),
+          },
         });
-      } catch (dbError) {
-        console.warn("Failed to sync to database:", dbError);
         // Continue anyway - localStorage is our fallback
       }
     }

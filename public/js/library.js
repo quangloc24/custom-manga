@@ -287,8 +287,65 @@ async function loadReadingHistory() {
 
     if (!historySection || !historyCards) return;
 
-    // Get all reading history from localStorage
-    const readingHistory = getReadingHistoryFromLocalStorage();
+    // Check if user is logged in
+    const mangaUser = localStorage.getItem("manga_user");
+    if (!mangaUser) {
+      historySection.style.display = "none";
+      console.log("[Reading History] No user logged in");
+      return;
+    }
+
+    const user = JSON.parse(mangaUser);
+
+    // Fetch reading history from database
+    const response = await fetch(`/api/user/reading-history/${user.username}`);
+    if (!response.ok) {
+      console.error("[Reading History] Failed to fetch:", response.status);
+      historySection.style.display = "none";
+      return;
+    }
+
+    const result = await response.json();
+    if (!result.success || !result.readChapters) {
+      historySection.style.display = "none";
+      return;
+    }
+
+    // Transform database history into the format we need
+    const readingHistory = Object.entries(result.readChapters).map(
+      ([mangaId, chapters]) => {
+        // Find the latest read chapter
+        let latestChapter = null;
+        let latestTimestamp = 0;
+        let readCount = 0;
+
+        Object.entries(chapters).forEach(([chapterId, chapterData]) => {
+          readCount++;
+          // Convert timestamp to number for comparison (handles both ISO strings and numbers)
+          const timestamp = chapterData.timestamp
+            ? typeof chapterData.timestamp === "string"
+              ? new Date(chapterData.timestamp).getTime()
+              : chapterData.timestamp
+            : 0;
+
+          if (timestamp > latestTimestamp) {
+            latestTimestamp = timestamp;
+            latestChapter = {
+              chapterId,
+              chapterNumber: chapterData.chapterNumber,
+              provider: chapterData.provider,
+            };
+          }
+        });
+
+        return {
+          mangaId,
+          latestChapter,
+          readCount,
+          timestamp: latestTimestamp,
+        };
+      },
+    );
 
     if (readingHistory.length === 0) {
       historySection.style.display = "none";
@@ -302,7 +359,6 @@ async function loadReadingHistory() {
           const response = await fetch(`/api/manga/${item.mangaId}`);
           const data = await response.json();
 
-          // API returns manga object directly, not wrapped in success field
           if (data && data.id) {
             return {
               ...item,
@@ -331,6 +387,13 @@ async function loadReadingHistory() {
       return;
     }
 
+    console.log(
+      "[Reading History] Loaded",
+      validHistory.length,
+      "items from database",
+    );
+    console.log("[Reading History] Sample item:", validHistory[0]);
+
     // Display history cards
     historyCards.innerHTML = validHistory
       .map((item) => createHistoryCard(item))
@@ -342,65 +405,6 @@ async function loadReadingHistory() {
   } catch (error) {
     console.error("Error loading reading history:", error);
   }
-}
-
-function getReadingHistoryFromLocalStorage() {
-  const history = [];
-
-  // Iterate through all localStorage keys
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-
-    // Find keys matching readChapters_{mangaId}
-    if (key && key.startsWith("readChapters_")) {
-      const mangaId = key.replace("readChapters_", "");
-
-      try {
-        const readChapters = JSON.parse(localStorage.getItem(key));
-        const chapterIds = Object.keys(readChapters);
-
-        if (chapterIds.length > 0) {
-          // Find the latest read chapter by timestamp
-          let latestChapter = null;
-          let latestTimestamp = 0;
-
-          chapterIds.forEach((chapterId) => {
-            const chapterData = readChapters[chapterId];
-
-            // Handle both old format (true) and new format (object with metadata)
-            if (typeof chapterData === "object" && chapterData.timestamp) {
-              if (chapterData.timestamp > latestTimestamp) {
-                latestTimestamp = chapterData.timestamp;
-                latestChapter = {
-                  chapterId: chapterId,
-                  chapterNumber: chapterData.chapterNumber,
-                  provider: chapterData.provider,
-                };
-              }
-            } else if (!latestChapter) {
-              // Fallback for old format
-              latestChapter = {
-                chapterId: chapterId,
-                chapterNumber: "?",
-                provider: "Unknown",
-              };
-            }
-          });
-
-          history.push({
-            mangaId,
-            latestChapter,
-            readCount: chapterIds.length,
-            timestamp: latestTimestamp || Date.now(),
-          });
-        }
-      } catch (e) {
-        console.error(`Error parsing read chapters for ${mangaId}:`, e);
-      }
-    }
-  }
-
-  return history;
 }
 
 function createHistoryCard(item) {
@@ -422,11 +426,13 @@ function createHistoryCard(item) {
       ? Math.round((item.readCount / parseFloat(latestChapterNumber)) * 100)
       : 0;
 
-  const chapterNumber = item.latestChapter.chapterNumber || "?";
+  const chapterNumber = item.latestChapter
+    ? item.latestChapter.chapterNumber || "?"
+    : "?";
 
   // Build continue reading URL
   const continueUrl =
-    item.manga && item.manga.chapters
+    item.manga && item.manga.chapters && item.latestChapter
       ? buildContinueReadingUrl(item)
       : `manga.html?id=${item.mangaId}`;
 

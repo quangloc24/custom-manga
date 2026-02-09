@@ -26,16 +26,10 @@ const providerFilter = document.getElementById("providerFilter");
 // Read chapters tracking
 let readChaptersMap = {}; // { chapterId: true }
 
-// Load read chapters from localStorage and database
+// Load read chapters from database only
 async function loadReadChapters() {
   try {
-    // First, load from localStorage (instant)
-    const stored = localStorage.getItem(`readChapters_${mangaId}`);
-    if (stored) {
-      readChaptersMap = JSON.parse(stored);
-    }
-
-    // Then, sync with database if user is logged in
+    // Only load from database if user is logged in
     const mangaUser = localStorage.getItem("manga_user");
     if (mangaUser) {
       try {
@@ -46,70 +40,83 @@ async function loadReadChapters() {
         if (response.ok) {
           const result = await response.json();
           if (result.success && result.chapters) {
-            // Merge database data with localStorage
-            // Database is the source of truth, but keep localStorage for offline access
-            Object.keys(result.chapters).forEach((chapterId) => {
-              readChaptersMap[chapterId] = result.chapters[chapterId];
-            });
-
-            // Update localStorage with merged data
-            localStorage.setItem(
-              `readChapters_${mangaId}`,
-              JSON.stringify(readChaptersMap),
+            // Use database as the sole source of truth
+            readChaptersMap = result.chapters;
+            console.log(
+              "[Read Chapters] Loaded from database:",
+              Object.keys(readChaptersMap).length,
+              "chapters",
             );
           }
         }
       } catch (dbError) {
-        console.warn("Failed to sync read chapters from database:", dbError);
-        // Continue with localStorage data
+        console.warn("Failed to load read chapters from database:", dbError);
       }
+    } else {
+      console.log("[Read Chapters] No user logged in, read status disabled");
     }
   } catch (e) {
     console.error("Error loading read chapters:", e);
   }
 }
 
-// Save read chapters to localStorage
-function saveReadChapters() {
-  try {
-    localStorage.setItem(
-      `readChapters_${mangaId}`,
-      JSON.stringify(readChaptersMap),
-    );
-  } catch (e) {
-    console.error("Error saving read chapters:", e);
-  }
-}
-
-// Mark chapter as read
+// Mark chapter as read (database only)
 async function markChapterAsRead(chapterId, chapterNumber, provider) {
+  // Update in-memory map for immediate UI feedback
   readChaptersMap[chapterId] = {
-    read: true,
     chapterNumber: chapterNumber || "?",
     provider: provider || "Unknown",
     timestamp: Date.now(),
   };
-  saveReadChapters();
 
   // Sync to database if user is logged in
   const mangaUser = localStorage.getItem("manga_user");
   if (mangaUser) {
     try {
       const user = JSON.parse(mangaUser);
-      await fetch("/api/user/read-chapter", {
+      const payload = {
+        username: user.username,
+        mangaId: mangaId,
+        chapterId,
+        chapterNumber,
+        provider,
+      };
+
+      console.log("[DB Sync] Attempting to sync chapter:", payload);
+
+      const response = await fetch("/api/user/read-chapter", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: user.username,
-          mangaId: mangaId,
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        console.error("[DB Sync] Server responded with error:", {
+          status: response.status,
+          statusText: response.statusText,
+          url: response.url,
+        });
+        const errorText = await response.text();
+        console.error("[DB Sync] Error response body:", errorText);
+      } else {
+        const result = await response.json();
+        console.log("[DB Sync] Successfully synced chapter:", result);
+      }
+    } catch (error) {
+      console.error("[DB Sync] Failed to sync to database:", {
+        errorType: error.constructor.name,
+        errorMessage: error.message,
+        errorStack: error.stack,
+        payload: {
+          mangaId,
           chapterId,
           chapterNumber,
           provider,
-        }),
+        },
       });
-    } catch (error) {
-      console.warn("Failed to sync to database:", error);
     }
+  } else {
+    console.warn("[DB Sync] No user logged in, chapter read status not saved");
   }
 }
 
