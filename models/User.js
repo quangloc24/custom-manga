@@ -43,9 +43,13 @@ const userSchema = new mongoose.Schema({
     of: [String],
     default: {},
   },
+  // Reading History: { mangaId: { chapterId: { chapterNumber, provider, timestamp } } }
+  readChapters: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {},
+  },
 });
 
-// Update lastUpdated timestamp on manga interactions
 // Update lastUpdated timestamp on manga interactions
 userSchema.pre("save", async function () {
   if (this.isModified("mangaData")) {
@@ -53,6 +57,9 @@ userSchema.pre("save", async function () {
   }
   if (this.isModified("customLists")) {
     this.markModified("customLists");
+  }
+  if (this.isModified("readChapters")) {
+    this.markModified("readChapters");
   }
 });
 

@@ -454,6 +454,59 @@ app.get("/api/download/status/:mangaId", (req, res) => {
   }
 });
 
+// ===== READING HISTORY API =====
+
+// Mark chapter as read
+app.post("/api/user/read-chapter", async (req, res) => {
+  try {
+    const { username, mangaId, chapterId, chapterNumber, provider } = req.body;
+
+    if (!username || !mangaId || !chapterId) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required parameters",
+      });
+    }
+
+    const result = await userManager.markChapterAsRead(
+      username,
+      mangaId,
+      chapterId,
+      chapterNumber,
+      provider,
+    );
+
+    res.json(result);
+  } catch (error) {
+    console.error("Mark chapter as read error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get read chapters for a specific manga
+app.get("/api/user/read-chapters/:username/:mangaId", async (req, res) => {
+  try {
+    const { username, mangaId } = req.params;
+    const result = await userManager.getReadChapters(username, mangaId);
+    res.json(result);
+  } catch (error) {
+    console.error("Get read chapters error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get all reading history for a user
+app.get("/api/user/reading-history/:username", async (req, res) => {
+  try {
+    const { username } = req.params;
+    const result = await userManager.getReadingHistory(username);
+    res.json(result);
+  } catch (error) {
+    console.error("Get reading history error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // --- User / Auth Routes ---
 
 // Register

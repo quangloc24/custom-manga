@@ -20,7 +20,10 @@ const addMangaBtn = document.getElementById("addMangaBtn");
 // Toast is already initialized in toast.js
 
 // Load library on page load
-window.addEventListener("load", loadLibrary);
+window.addEventListener("load", () => {
+  loadReadingHistory();
+  loadLibrary();
+});
 
 // Event listeners
 searchInput.addEventListener("input", handleSearch);
@@ -273,4 +276,214 @@ function hideEmptyState() {
 
 function updateMangaCount(total = 0) {
   mangaCount.textContent = total || filteredMangas.length;
+}
+
+// ===== READING HISTORY =====
+
+async function loadReadingHistory() {
+  try {
+    const historySection = document.getElementById("readingHistorySection");
+    const historyCards = document.getElementById("historyCards");
+
+    if (!historySection || !historyCards) return;
+
+    // Get all reading history from localStorage
+    const readingHistory = getReadingHistoryFromLocalStorage();
+
+    if (readingHistory.length === 0) {
+      historySection.style.display = "none";
+      return;
+    }
+
+    // Fetch manga details for each history item
+    const historyWithDetails = await Promise.all(
+      readingHistory.map(async (item) => {
+        try {
+          const response = await fetch(`/api/manga/${item.mangaId}`);
+          const data = await response.json();
+
+          // API returns manga object directly, not wrapped in success field
+          if (data && data.id) {
+            return {
+              ...item,
+              manga: data,
+              thumbnail: data.thumbnail,
+              title: data.title,
+              totalChapters: data.totalChapters || data.chapters?.length || 0,
+            };
+          }
+          return null;
+        } catch (e) {
+          console.error(`Error fetching manga ${item.mangaId}:`, e);
+          return null;
+        }
+      }),
+    );
+
+    // Filter out failed fetches and sort by timestamp
+    const validHistory = historyWithDetails
+      .filter((item) => item !== null)
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 10); // Show max 10 recent items
+
+    if (validHistory.length === 0) {
+      historySection.style.display = "none";
+      return;
+    }
+
+    // Display history cards
+    historyCards.innerHTML = validHistory
+      .map((item) => createHistoryCard(item))
+      .join("");
+    historySection.style.display = "block";
+
+    // Setup navigation buttons
+    setupHistoryNavigation();
+  } catch (error) {
+    console.error("Error loading reading history:", error);
+  }
+}
+
+function getReadingHistoryFromLocalStorage() {
+  const history = [];
+
+  // Iterate through all localStorage keys
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+
+    // Find keys matching readChapters_{mangaId}
+    if (key && key.startsWith("readChapters_")) {
+      const mangaId = key.replace("readChapters_", "");
+
+      try {
+        const readChapters = JSON.parse(localStorage.getItem(key));
+        const chapterIds = Object.keys(readChapters);
+
+        if (chapterIds.length > 0) {
+          // Find the latest read chapter by timestamp
+          let latestChapter = null;
+          let latestTimestamp = 0;
+
+          chapterIds.forEach((chapterId) => {
+            const chapterData = readChapters[chapterId];
+
+            // Handle both old format (true) and new format (object with metadata)
+            if (typeof chapterData === "object" && chapterData.timestamp) {
+              if (chapterData.timestamp > latestTimestamp) {
+                latestTimestamp = chapterData.timestamp;
+                latestChapter = {
+                  chapterId: chapterId,
+                  chapterNumber: chapterData.chapterNumber,
+                  provider: chapterData.provider,
+                };
+              }
+            } else if (!latestChapter) {
+              // Fallback for old format
+              latestChapter = {
+                chapterId: chapterId,
+                chapterNumber: "?",
+                provider: "Unknown",
+              };
+            }
+          });
+
+          history.push({
+            mangaId,
+            latestChapter,
+            readCount: chapterIds.length,
+            timestamp: latestTimestamp || Date.now(),
+          });
+        }
+      } catch (e) {
+        console.error(`Error parsing read chapters for ${mangaId}:`, e);
+      }
+    }
+  }
+
+  return history;
+}
+
+function createHistoryCard(item) {
+  // Find the latest chapter number from all chapters
+  let latestChapterNumber = "?";
+  if (item.manga && item.manga.chapters && item.manga.chapters.length > 0) {
+    // Get the highest chapter number
+    const chapterNumbers = item.manga.chapters
+      .map((ch) => parseFloat(ch.number))
+      .filter((num) => !isNaN(num));
+
+    if (chapterNumbers.length > 0) {
+      latestChapterNumber = Math.max(...chapterNumbers).toString();
+    }
+  }
+
+  const progressPercent =
+    latestChapterNumber !== "?" && item.readCount > 0
+      ? Math.round((item.readCount / parseFloat(latestChapterNumber)) * 100)
+      : 0;
+
+  const chapterNumber = item.latestChapter.chapterNumber || "?";
+
+  // Build continue reading URL
+  const continueUrl =
+    item.manga && item.manga.chapters
+      ? buildContinueReadingUrl(item)
+      : `manga.html?id=${item.mangaId}`;
+
+  return `
+    <div class="history-card" onclick="window.location.href='${continueUrl}'">
+      <div class="history-thumbnail">
+        <img src="${item.thumbnail}" alt="${item.title}" 
+             onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22300%22%3E%3Crect fill=%22%23333%22 width=%22200%22 height=%22300%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 fill=%22%23666%22 text-anchor=%22middle%22 dy=%22.3em%22%3ENo Image%3C/text%3E%3C/svg%3E'">
+        <div class="history-overlay">
+          <span class="continue-reading">Continue Reading</span>
+        </div>
+      </div>
+      <div class="history-info">
+        <div class="history-title">${item.title}</div>
+        <div class="history-chapter">Ch.${chapterNumber}/${latestChapterNumber}</div>
+        ${progressPercent > 0 ? `<div class="history-progress-badge">${progressPercent}%</div>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+function buildContinueReadingUrl(item) {
+  // Find the chapter in manga.chapters that matches latestChapter
+  const chapter = item.manga.chapters.find(
+    (ch) => ch.id === item.latestChapter.chapterId,
+  );
+
+  if (!chapter) {
+    return `manga.html?id=${item.mangaId}`;
+  }
+
+  // Build reader URL with all necessary parameters
+  const params = new URLSearchParams();
+  params.append("url", chapter.url);
+  params.append("mangaId", item.mangaId);
+  params.append(
+    "provider",
+    chapter.provider || item.latestChapter.provider || "Unknown",
+  );
+  params.append("chapterId", chapter.id);
+  params.append("chapterNumber", chapter.number);
+
+  return `reader.html?${params.toString()}`;
+}
+
+function setupHistoryNavigation() {
+  const container = document.querySelector(".history-scroll-container");
+  const prevBtn = document.getElementById("historyPrevBtn");
+  const nextBtn = document.getElementById("historyNextBtn");
+
+  if (!container || !prevBtn || !nextBtn) return;
+
+  prevBtn.onclick = () => {
+    container.scrollBy({ left: -300, behavior: "smooth" });
+  };
+
+  nextBtn.onclick = () => {
+    container.scrollBy({ left: 300, behavior: "smooth" });
+  };
 }

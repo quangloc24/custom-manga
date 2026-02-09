@@ -23,6 +23,96 @@ const chapterCount = document.getElementById("chapterCount");
 const scrapeDetailsBtn = document.getElementById("scrapeDetailsBtn");
 const providerFilter = document.getElementById("providerFilter");
 
+// Read chapters tracking
+let readChaptersMap = {}; // { chapterId: true }
+
+// Load read chapters from localStorage and database
+async function loadReadChapters() {
+  try {
+    // First, load from localStorage (instant)
+    const stored = localStorage.getItem(`readChapters_${mangaId}`);
+    if (stored) {
+      readChaptersMap = JSON.parse(stored);
+    }
+
+    // Then, sync with database if user is logged in
+    const mangaUser = localStorage.getItem("manga_user");
+    if (mangaUser) {
+      try {
+        const user = JSON.parse(mangaUser);
+        const response = await fetch(
+          `/api/user/read-chapters/${user.username}/${mangaId}`,
+        );
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success && result.chapters) {
+            // Merge database data with localStorage
+            // Database is the source of truth, but keep localStorage for offline access
+            Object.keys(result.chapters).forEach((chapterId) => {
+              readChaptersMap[chapterId] = result.chapters[chapterId];
+            });
+
+            // Update localStorage with merged data
+            localStorage.setItem(
+              `readChapters_${mangaId}`,
+              JSON.stringify(readChaptersMap),
+            );
+          }
+        }
+      } catch (dbError) {
+        console.warn("Failed to sync read chapters from database:", dbError);
+        // Continue with localStorage data
+      }
+    }
+  } catch (e) {
+    console.error("Error loading read chapters:", e);
+  }
+}
+
+// Save read chapters to localStorage
+function saveReadChapters() {
+  try {
+    localStorage.setItem(
+      `readChapters_${mangaId}`,
+      JSON.stringify(readChaptersMap),
+    );
+  } catch (e) {
+    console.error("Error saving read chapters:", e);
+  }
+}
+
+// Mark chapter as read
+async function markChapterAsRead(chapterId, chapterNumber, provider) {
+  readChaptersMap[chapterId] = {
+    read: true,
+    chapterNumber: chapterNumber || "?",
+    provider: provider || "Unknown",
+    timestamp: Date.now(),
+  };
+  saveReadChapters();
+
+  // Sync to database if user is logged in
+  const mangaUser = localStorage.getItem("manga_user");
+  if (mangaUser) {
+    try {
+      const user = JSON.parse(mangaUser);
+      await fetch("/api/user/read-chapter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: user.username,
+          mangaId: mangaId,
+          chapterId,
+          chapterNumber,
+          provider,
+        }),
+      });
+    } catch (error) {
+      console.warn("Failed to sync to database:", error);
+    }
+  }
+}
+
 // Load manga details on page load
 window.addEventListener("load", loadMangaDetails);
 scrapeDetailsBtn.addEventListener("click", scrapeMangaDetails);
@@ -303,7 +393,7 @@ async function autoScrapeMangaDetails() {
   }
 }
 
-function displayMangaDetails(manga, isLiteVersion = false) {
+async function displayMangaDetails(manga, isLiteVersion = false) {
   loadingContainer.style.display = "none";
   mangaDetail.style.display = "block";
 
@@ -373,6 +463,7 @@ function displayMangaDetails(manga, isLiteVersion = false) {
     `;
     chapterCount.textContent = "...";
   } else {
+    await loadReadChapters(); // Load read status from localStorage and database
     displayChapters(details.chapters || []);
     chapterCount.textContent =
       details.totalChapters || (details.chapters ? details.chapters.length : 0);
@@ -574,10 +665,17 @@ function displayChapters(chapters, shouldUpdateFilters = true) {
     const status = downloadStatusMap[chapter.id];
     const isDownloaded = status && status.downloaded;
     const hasIssue = status && status.hasIssue;
+    const isRead = !!readChaptersMap[chapter.id];
+
+    // Add read class if chapter is read
+    if (isRead) {
+      chapterEl.classList.add("read");
+    }
 
     // Use grid columns matching header
     chapterEl.innerHTML = `
       <div class="col-chapter">
+          ${isRead ? '<span class="read-indicator" title="Read">📖</span>' : ""}
           <span class="chapter-number">Ch. ${chapter.number}</span>
       </div>
       <div class="col-provider">
@@ -598,6 +696,9 @@ function displayChapters(chapters, shouldUpdateFilters = true) {
     // Click on row to read
     chapterEl.addEventListener("click", (e) => {
       if (e.target.closest("button")) return; // Ignore button clicks
+
+      // Mark chapter as read
+      markChapterAsRead(chapter.id, chapter.number, chapter.provider);
 
       const params = new URLSearchParams();
       params.append("url", chapter.url);

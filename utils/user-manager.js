@@ -205,6 +205,69 @@ class UserManager {
       return { success: false, error: error.message };
     }
   }
+
+  // --- Reading History ---
+
+  async markChapterAsRead(
+    username,
+    mangaId,
+    chapterId,
+    chapterNumber,
+    provider,
+  ) {
+    try {
+      const user = await User.findOne({ username });
+      if (!user) return { success: false, error: "User not found" };
+
+      // Initialize readChapters structure if needed
+      if (!user.readChapters) {
+        user.readChapters = {};
+      }
+      if (!user.readChapters[mangaId]) {
+        user.readChapters[mangaId] = {};
+      }
+
+      // Store chapter read data
+      user.readChapters[mangaId][chapterId] = {
+        chapterNumber: chapterNumber || "?",
+        provider: provider || "Unknown",
+        timestamp: new Date(),
+      };
+
+      user.markModified("readChapters");
+      await user.save();
+
+      return { success: true };
+    } catch (error) {
+      console.error("Mark chapter as read error:", error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async getReadChapters(username, mangaId) {
+    try {
+      const user = await User.findOne({ username }).select("readChapters");
+      if (!user) return { success: false, error: "User not found" };
+
+      const chapters = user.readChapters?.[mangaId] || {};
+      return { success: true, chapters };
+    } catch (error) {
+      console.error("Get read chapters error:", error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async getReadingHistory(username) {
+    try {
+      const user = await User.findOne({ username }).select("readChapters");
+      if (!user) return { success: false, error: "User not found" };
+
+      return { success: true, readChapters: user.readChapters || {} };
+    } catch (error) {
+      console.error("Get reading history error:", error);
+      return { success: false, error: error.message };
+    }
+  }
 }
 
 module.exports = UserManager;

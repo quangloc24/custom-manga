@@ -844,6 +844,28 @@
     color: var(--text-secondary);
 }
 
+/* Read chapter styles */
+.chapter-row.read {
+    opacity: 0.6;
+}
+
+.chapter-row.read:hover {
+    opacity: 0.8;
+}
+
+.read-indicator {
+    font-size: 0.9rem;
+    margin-right: 6px;
+    opacity: 0.7;
+}
+
+.col-chapter {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+
 .download-btn-mini {
     background: transparent;
     border: none;

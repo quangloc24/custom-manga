@@ -2,6 +2,54 @@
 console.log("🚀 app.js loaded!");
 let currentChapterData = null;
 
+// Helper function to mark chapter as read
+async function markChapterAsRead(mangaId, chapterId, chapterNumber, provider) {
+  try {
+    const storageKey = `readChapters_${mangaId}`;
+    let readChapters = {};
+
+    const stored = localStorage.getItem(storageKey);
+    if (stored) {
+      readChapters = JSON.parse(stored);
+    }
+
+    // Store chapter with metadata and timestamp
+    readChapters[chapterId] = {
+      read: true,
+      chapterNumber: chapterNumber || "?",
+      provider: provider || "Unknown",
+      timestamp: Date.now(),
+    };
+
+    // Save to localStorage (cache)
+    localStorage.setItem(storageKey, JSON.stringify(readChapters));
+
+    // Sync to database if user is logged in
+    const mangaUser = localStorage.getItem("manga_user");
+    if (mangaUser) {
+      try {
+        const user = JSON.parse(mangaUser);
+        await fetch("/api/user/read-chapter", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: user.username,
+            mangaId,
+            chapterId,
+            chapterNumber,
+            provider,
+          }),
+        });
+      } catch (dbError) {
+        console.warn("Failed to sync to database:", dbError);
+        // Continue anyway - localStorage is our fallback
+      }
+    }
+  } catch (e) {
+    console.error("Error marking chapter as read:", e);
+  }
+}
+
 // DOM Elements
 const urlInput = document.getElementById("urlInput");
 const loadBtn = document.getElementById("loadBtn");
@@ -156,6 +204,16 @@ async function loadChapterFromUrl(url, metadata = {}) {
         "lastChapterMetadata",
         JSON.stringify(metadataToSave),
       );
+
+      // Mark chapter as read
+      if (data.metadata.mangaId && data.metadata.chapterId) {
+        markChapterAsRead(
+          data.metadata.mangaId,
+          data.metadata.chapterId,
+          data.metadata.chapterNumber,
+          data.metadata.provider,
+        );
+      }
     }
 
     displayChapter(data);
