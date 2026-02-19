@@ -1,9 +1,10 @@
 const cron = require("node-cron");
 
 class AutoUpdater {
-  constructor(titleScraper, dataManager) {
+  constructor(titleScraper, dataManager, scraper) {
     this.titleScraper = titleScraper;
     this.dataManager = dataManager;
+    this.scraper = scraper;
     this.task = null;
     this.isRunning = false;
     this.updateIntervalHours = parseInt(
@@ -79,6 +80,7 @@ class AutoUpdater {
       let successCount = 0;
       let errorCount = 0;
       let newChaptersTotal = 0;
+      let syncedChaptersCount = 0;
 
       for (const manga of allManga) {
         try {
@@ -104,6 +106,33 @@ class AutoUpdater {
                 `   ✅ ${result.data.title}: +${newChapters} new chapters (${oldChapterCount} → ${newChapterCount})`,
               );
               newChaptersTotal += newChapters;
+
+              // --- PROACTIVE AUTO-SYNC ---
+              // If we have new chapters, automatically sync them to Cloud
+              if (this.scraper) {
+                console.log(
+                  `   ☁️ Starting proactive sync for ${newChapters} chapters...`,
+                );
+                // Chapters are sorted newest first, so we take the top 'newChapters'
+                const chaptersToSync = (result.data.chapters || []).slice(
+                  0,
+                  newChapters,
+                );
+
+                for (const ch of chaptersToSync) {
+                  console.log(
+                    `     🔄 Auto-Syncing Ch. ${ch.number} (${ch.url})...`,
+                  );
+                  try {
+                    await this.scraper.scrapeChapter(ch.url);
+                    syncedChaptersCount++;
+                  } catch (syncErr) {
+                    console.log(
+                      `     ⚠️  Auto-Sync failed for Ch. ${ch.number}: ${syncErr.message}`,
+                    );
+                  }
+                }
+              }
             } else {
               console.log(
                 `   ✅ ${result.data.title}: Up to date (${newChapterCount} chapters)`,
@@ -135,6 +164,7 @@ class AutoUpdater {
       console.log(`\n✅ Update complete in ${duration}s`);
       console.log(`   Success: ${successCount}, Errors: ${errorCount}`);
       console.log(`   New chapters found: ${newChaptersTotal}`);
+      console.log(`   Automatically synced: ${syncedChaptersCount}`);
     } catch (error) {
       console.error("❌ Auto-update error:", error.message);
     } finally {

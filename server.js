@@ -7,7 +7,7 @@ const MangaScraper = require("./scraper-cheerio"); // Using Cheerio for better c
 const HomepageScraper = require("./scrapers/homepage-scraper");
 const TitleScraper = require("./scrapers/title-scraper");
 const DataManager = require("./utils/data-manager");
-const ChapterDownloadManager = require("./utils/chapter-download-manager");
+
 const AutoUpdater = require("./utils/auto-updater");
 const dns = require("dns");
 dns.setDefaultResultOrder("ipv4first");
@@ -26,11 +26,11 @@ const scraper = new MangaScraper();
 const homepageScraper = new HomepageScraper();
 const titleScraper = new TitleScraper();
 const dataManager = new DataManager();
-const downloadManager = new ChapterDownloadManager();
+
 // USER MANAGER
 const UserManager = require("./utils/user-manager");
 const userManager = new UserManager();
-const autoUpdater = new AutoUpdater(titleScraper, dataManager);
+const autoUpdater = new AutoUpdater(titleScraper, dataManager, scraper);
 
 // Remove file-based cache syncing as we use DB now (or implement DB migration here if preferred)
 // dataManager.migrateAllManga();
@@ -58,42 +58,6 @@ app.get("/api/chapter", async (req, res) => {
         success: false,
         error: "URL parameter is required",
       });
-    }
-
-    // Attempt cache-first if we have metadata
-    if (qMangaId && qProvider && qChapterId) {
-      if (
-        downloadManager.isChapterDownloaded(qMangaId, qProvider, qChapterId)
-      ) {
-        console.log(
-          `Cache hit for ${qMangaId} / ${qProvider} / ${qChapterId} (skipping scrape)`,
-        );
-        const info = downloadManager.getChapterInfo(
-          qMangaId,
-          qProvider,
-          qChapterId,
-        );
-        if (info && info.images) {
-          return res.json({
-            success: true,
-            images: info.images.map((img) => ({
-              ...img,
-              url: `/api/cached-image/${qMangaId}/${encodeURIComponent(qProvider)}/${qChapterId}/${img.page}`,
-              isCached: true,
-            })),
-            metadata: {
-              title: info.mangaId, // Use mangaId as fallback title
-              chapter: `Chapter ${info.chapterNumber}`,
-              provider: qProvider,
-              mangaId: qMangaId,
-              chapterId: qChapterId,
-              chapterNumber: info.chapterNumber,
-            },
-            url: url,
-            isCached: true,
-          });
-        }
-      }
     }
 
     console.log("Fetching chapter:", url);
@@ -157,30 +121,6 @@ app.get("/api/chapter", async (req, res) => {
       result.metadata.chapterId = chapterId;
       result.metadata.provider = provider;
       result.metadata.chapterNumber = chapterNumber;
-
-      if (mangaId && chapterId) {
-        // Check if chapter is downloaded
-        if (downloadManager.isChapterDownloaded(mangaId, provider, chapterId)) {
-          console.log(`Serving cached images for chapter: ${chapterId}`);
-          const info = downloadManager.getChapterInfo(
-            mangaId,
-            provider,
-            chapterId,
-          );
-
-          if (info && info.images) {
-            // Replace image URLs with local proxy URLs
-            result.images = info.images.map((img) => ({
-              ...img,
-              url: `/api/cached-image/${mangaId}/${encodeURIComponent(
-                provider,
-              )}/${chapterId}/${img.page}`,
-              isCached: true,
-            }));
-            result.isCached = true;
-          }
-        }
-      }
     }
 
     res.json(result);
@@ -356,157 +296,37 @@ app.post("/api/scrape/manga/:id", async (req, res) => {
   }
 });
 
-// Download chapter
-app.post("/api/download/chapter", async (req, res) => {
+// Cloud Sync Chapter (Upload to ImageKit + Save to DB)
+app.post("/api/sync/chapter", async (req, res) => {
   try {
-    const { mangaId, provider, chapterId, chapterNumber, chapterUrl } =
-      req.body;
+    // We only need the URL because the scraper handles everything else (metadata, uploading, saving)
+    const { url } = req.body;
 
-    if (
-      !mangaId ||
-      !provider ||
-      !chapterId ||
-      chapterNumber === undefined ||
-      chapterNumber === null ||
-      !chapterUrl
-    ) {
+    if (!url) {
       return res.status(400).json({
         success: false,
-        error: "Missing required parameters",
+        error: "Missing chapter URL",
       });
     }
 
-    // Check if already downloaded
-    if (downloadManager.isChapterDownloaded(mangaId, provider, chapterId)) {
-      return res.json({
+    console.log(`☁️ Syncing chapter to cloud: ${url}`);
+    const result = await scraper.scrapeChapter(url);
+
+    if (result.success) {
+      res.json({
         success: true,
-        skipped: true,
-        message: "Chapter already downloaded",
+        message: "Chapter synced to cloud successfully!",
+        data: result,
       });
-    }
-
-    // Scrape chapter to get images
-    console.log(`Downloading chapter: ${chapterUrl}`);
-    const chapterData = await scraper.scrapeChapter(chapterUrl);
-
-    if (
-      !chapterData.success ||
-      !chapterData.images ||
-      chapterData.images.length === 0
-    ) {
-      return res.status(500).json({
+    } else {
+      res.status(500).json({
         success: false,
-        error: "Failed to scrape chapter images",
+        error: "Failed to sync chapter to cloud",
       });
     }
-
-    // Use scraped metadata if available to ensure correct provider/folder name
-    // This fixes the "Unknown" folder issue if the frontend sent "unknown"
-    let finalProvider = provider;
-    if (chapterData.metadata && chapterData.metadata.provider) {
-      const scraped = chapterData.metadata.provider;
-      if (scraped.toLowerCase() !== "unknown") {
-        finalProvider = scraped;
-        // If scraper says "Official", but we have a specific provider in request (e.g. from URL), prefer request
-        if (
-          scraped.toLowerCase() === "official" &&
-          provider &&
-          provider.toLowerCase() !== "unknown" &&
-          provider.toLowerCase() !== "official"
-        ) {
-          finalProvider = provider;
-        }
-      }
-    }
-
-    // Extract chapter number from metadata if available
-    let finalChapterNumber = chapterNumber;
-    if (chapterData.metadata && chapterData.metadata.chapter) {
-      // metadata.chapter is usually "Chapter 14", extract number
-      const match = chapterData.metadata.chapter.match(/(\d+(\.\d+)?)/);
-      if (match) finalChapterNumber = match[1];
-    }
-
-    // Download chapter
-    const result = await downloadManager.downloadChapter(
-      mangaId,
-      finalProvider,
-      chapterId,
-      finalChapterNumber,
-      chapterData.images,
-      scraper,
-    );
-
-    res.json(result);
   } catch (error) {
-    console.error("Download error:", error);
+    console.error("Sync error:", error);
     res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// Batch Download (Server-Side)
-app.post("/api/download/batch", async (req, res) => {
-  try {
-    const { requests, delay } = req.body;
-
-    if (!requests || !Array.isArray(requests) || requests.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid requests array",
-      });
-    }
-
-    const delaySeconds = parseInt(delay) || 5;
-
-    // Start background processing
-    downloadManager.addBatch(requests, delaySeconds, scraper);
-
-    res.json({
-      success: true,
-      message: `Batch download started for ${requests.length} chapters`,
-      queued: requests.length,
-    });
-  } catch (error) {
-    console.error("Batch API error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// Get Batch Queue Status
-app.get("/api/download/batch/status", (req, res) => {
-  const status = downloadManager.getQueueStatus();
-  res.json({ success: true, ...status });
-});
-
-// Get chapter download status
-app.get("/api/download/status/:mangaId/:provider/:chapterId", (req, res) => {
-  try {
-    const { mangaId, provider, chapterId } = req.params;
-    const info = downloadManager.getChapterInfo(mangaId, provider, chapterId);
-
-    if (!info) {
-      return res.json({ downloaded: false });
-    }
-
-    res.json({
-      downloaded: true,
-      ...info,
-    });
-  } catch (error) {
-    console.error("Status check error:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Get all downloaded chapters for a manga (Batch)
-app.get("/api/download/status/:mangaId", (req, res) => {
-  try {
-    const { mangaId } = req.params;
-    const downloads = downloadManager.getMangaDownloads(mangaId);
-    res.json(downloads);
-  } catch (error) {
-    console.error("Batch status check error:", error);
-    res.status(500).json({ error: error.message });
   }
 });
 
@@ -664,27 +484,21 @@ app.post("/api/user/list", async (req, res) => {
   res.json(result);
 });
 
-// Serve cached chapter images
-app.get("/api/cached-image/:mangaId/:provider/:chapterId/:page", (req, res) => {
+// Get sync status for all chapters of a manga
+// IMPORTANT: Must be registered BEFORE the catch-all route below
+app.get("/api/sync/status/:mangaId", async (req, res) => {
   try {
-    const { mangaId, provider, chapterId, page } = req.params;
-    const pageNumber = parseInt(page);
-
-    const imagePath = downloadManager.getLocalImagePath(
-      mangaId,
-      provider,
-      chapterId,
-      pageNumber,
+    const { mangaId } = req.params;
+    const chapters = await require("./models/Chapter").find(
+      { mangaId },
+      "chapterId",
     );
-
-    if (!imagePath || !require("fs").existsSync(imagePath)) {
-      return res.status(404).json({ error: "Cached image not found" });
-    }
-
-    res.sendFile(imagePath);
+    // Return array of synced chapter URLs (chapterId in DB stores full URL)
+    const syncedUrls = chapters.map((c) => c.chapterId);
+    res.json({ success: true, syncedUrls });
   } catch (error) {
-    console.error("Cached image error:", error);
-    res.status(500).json({ error: error.message });
+    console.error("Sync status error:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

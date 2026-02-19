@@ -172,7 +172,8 @@ function updateChapterTimes() {
 }
 
 // Map to store download status for all chapters
-let downloadStatusMap = {};
+// Set to store synced chapter URLs
+let syncedChaptersSet = new Set();
 
 // ... (existing code)
 
@@ -216,14 +217,7 @@ async function loadMangaDetails() {
     console.log("Fetching chapters and status...");
 
     // Start status fetch immediately (don't await yet)
-    const statusPromise = fetch(
-      `/api/download/status/${mangaId}?_t=${timestamp}`,
-    )
-      .then((res) => (res.ok ? res.json() : {}))
-      .catch((e) => {
-        console.error("Failed to fetch download statuses:", e);
-        return {};
-      });
+    const statusPromise = checkSyncStatus(mangaId);
 
     // Start manga fetch
     const response = await fetch(`/api/manga/${mangaId}?_t=${timestamp}`);
@@ -253,14 +247,9 @@ async function loadMangaDetails() {
     displayMangaDetails(manga, false);
 
     // Update status when ready
-    statusPromise.then((statusMap) => {
-      downloadStatusMap = statusMap;
-      // Re-render only the chapters part to update ticks
-      // Or better: update existing buttons to avoid flicker?
-      // Re-rendering is fast enough for < 1000 items.
-      // But let's check if we can just update.
-      updateChapterStatuses();
-    });
+    await statusPromise;
+    updateChapterStatuses();
+    startSyncStatusPolling(); // Begin auto-polling every 30s for live sync indicator updates
   } catch (error) {
     console.error("Error loading manga:", error);
     // Only auto-scrape if we strongly suspect it's missing, NOT on network/render errors
@@ -669,9 +658,7 @@ function displayChapters(chapters, shouldUpdateFilters = true) {
     chapterEl.className = "chapter-row";
 
     const timeText = chapter.relativeTime || "";
-    const status = downloadStatusMap[chapter.id];
-    const isDownloaded = status && status.downloaded;
-    const hasIssue = status && status.hasIssue;
+    const isSynced = syncedChaptersSet.has(chapter.url);
     const isRead = !!readChaptersMap[chapter.id];
 
     // Add read class if chapter is read
@@ -679,26 +666,25 @@ function displayChapters(chapters, shouldUpdateFilters = true) {
       chapterEl.classList.add("read");
     }
 
-    // Use grid columns matching header
     chapterEl.innerHTML = `
-      <div class="col-chapter">
-          ${isRead ? '<span class="read-indicator" title="Read">📖</span>' : ""}
-          <span class="chapter-number">Ch. ${chapter.number}</span>
-      </div>
-      <div class="col-provider">
-          <span class="provider-badge">${chapter.provider || "Unknown"}</span>
-      </div>
-      <div class="col-updated">
-          ${timeText ? `<span class="chapter-time">${timeText}</span>` : ""}
-      </div>
-      <div class="col-download">
-          <button class="download-btn-mini ${isDownloaded ? "downloaded" : ""} ${hasIssue ? "issue" : ""}" 
-                  data-chapter-id="${chapter.id}"
-                  title="${isDownloaded ? (hasIssue ? "Issue: Incomplete" : "Downloaded") : "Download"}">
-             ${isDownloaded ? (hasIssue ? "⚠️" : "✅") : "⬇️"}
-          </button>
-      </div>
-    `;
+            <div class="col-chapter">
+                ${isRead ? '<span class="read-indicator" title="Read">📖</span>' : ""}
+                <span class="chapter-number">Ch. ${chapter.number}</span>
+            </div>
+            <div class="col-provider">
+                <span class="provider-badge">${chapter.provider || "Unknown"}</span>
+            </div>
+            <div class="col-updated">
+                ${timeText ? `<span class="chapter-time">${timeText}</span>` : ""}
+            </div>
+            <div class="col-download">
+                <button class="download-btn-mini ${isSynced ? "downloaded" : ""}"
+                        data-chapter-url="${chapter.url}"
+                        title="${isSynced ? "Synced to Cloud" : "Sync to Cloud"}">
+                   ${isSynced ? "✅" : "☁️↓"}
+                </button>
+            </div>
+        `;
 
     // Click on row to read
     chapterEl.addEventListener("click", (e) => {
@@ -725,7 +711,7 @@ function displayChapters(chapters, shouldUpdateFilters = true) {
         !btn.classList.contains("issue")
       )
         return;
-      await downloadChapter(chapter, btn);
+      await syncChapter(chapter, btn);
     });
 
     chaptersList.appendChild(chapterEl);
@@ -765,114 +751,105 @@ function createProviderFilter(chapters) {
   if (dlBtn) dlBtn.onclick = openDownloadModal;
 }
 
-async function downloadChapter(chapter, buttonEl) {
+async function syncChapter(chapter, buttonEl) {
   const originalText = buttonEl.textContent;
   buttonEl.textContent = "⏳";
   buttonEl.disabled = true;
 
   try {
-    const response = await fetch("/api/download/chapter", {
+    const response = await fetch("/api/sync/chapter", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        mangaId: mangaId,
-        provider: chapter.provider || "Unknown",
-        chapterId: chapter.id,
-        chapterNumber: chapter.number,
-        chapterUrl: chapter.url,
-      }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: chapter.url }),
     });
 
     const result = await response.json();
 
     if (result.success) {
-      if (result.skipped) {
-        buttonEl.textContent = "✓";
-        buttonEl.title = "Already downloaded";
-        buttonEl.classList.add("downloaded");
-      } else {
-        buttonEl.textContent = "✓";
-        buttonEl.title = `Downloaded ${result.downloadedPages}/${result.totalPages} pages`;
-        buttonEl.classList.add("downloaded");
-        if (result.hasIssue) {
-          buttonEl.textContent = "⚠️";
-          buttonEl.title = `Issue: Only ${result.downloadedPages} pages downloaded`;
-          buttonEl.classList.remove("downloaded");
-          buttonEl.classList.add("issue");
-        }
-      }
+      buttonEl.textContent = "✅";
+      buttonEl.title = "Synced to Cloud";
+      buttonEl.classList.add("downloaded"); // Use green style
+
+      // Update local set and UI
+      syncedChaptersSet.add(chapter.url);
+
+      toast.success(`Chapter ${chapter.number} synced!`);
     } else {
       buttonEl.textContent = "❌";
-      buttonEl.title = "Download failed";
+      buttonEl.title = "Sync failed";
       setTimeout(() => {
         buttonEl.textContent = originalText;
         buttonEl.disabled = false;
       }, 2000);
+      toast.error(`Sync failed: ${result.error}`);
     }
-
-    return result; // Return result for batch processing
   } catch (error) {
-    console.error("Download error:", error);
+    console.error("Sync error:", error);
     buttonEl.textContent = "❌";
-    buttonEl.title = "Download failed";
+    buttonEl.title = "Network error";
     setTimeout(() => {
       buttonEl.textContent = originalText;
       buttonEl.disabled = false;
     }, 2000);
-    throw error; // Throw for batch processing
   }
 }
 
 // Helper to update statuses without re-rendering list
 function updateChapterStatuses() {
-  const buttons = document.querySelectorAll(".chapter-item .download-btn");
+  const buttons = document.querySelectorAll(".download-btn-mini");
   buttons.forEach((btn) => {
-    const chapterId = btn.dataset.chapterId;
-    const status = downloadStatusMap[chapterId];
-
-    if (status && status.downloaded) {
-      btn.textContent = "✓";
-      btn.title = status.hasIssue
-        ? `Issue: Only ${status.downloadedPages} pages downloaded`
-        : `Downloaded ${status.downloadedPages}/${status.totalPages} pages`;
+    const chapterUrl = btn.dataset.chapterUrl;
+    if (syncedChaptersSet.has(chapterUrl)) {
+      btn.textContent = "✅";
+      btn.title = "Synced to Cloud";
       btn.classList.add("downloaded");
+    }
+  });
+}
 
-      if (status.hasIssue) {
-        btn.textContent = "⚠️";
-        btn.classList.remove("downloaded");
-        btn.classList.add("issue");
+async function checkSyncStatus(mangaId) {
+  try {
+    const timestamp = new Date().getTime();
+    const response = await fetch(`/api/sync/status/${mangaId}?_t=${timestamp}`);
+    if (response.ok) {
+      const result = await response.json();
+      if (result.success && result.syncedUrls) {
+        syncedChaptersSet = new Set(result.syncedUrls);
+      }
+    }
+  } catch (error) {
+    console.error("Error checking sync status:", error);
+  }
+}
+
+// Auto-poll sync status every 30 s and update the UI without a page reload
+let syncPollingInterval = null;
+
+function startSyncStatusPolling() {
+  if (syncPollingInterval) return; // Already running
+  syncPollingInterval = setInterval(async () => {
+    await checkSyncStatus(mangaId);
+    updateChapterSyncButtons();
+  }, 10000); // 10 seconds — matches chapter sync cadence
+}
+
+// Update ONLY the sync-state of chapter buttons (no full re-render)
+function updateChapterSyncButtons() {
+  const buttons = document.querySelectorAll(".download-btn-mini");
+  buttons.forEach((btn) => {
+    const url = btn.dataset.chapterUrl;
+    if (!url) return;
+    if (syncedChaptersSet.has(url)) {
+      if (btn.textContent.trim() !== "✅") {
+        btn.textContent = "✅";
+        btn.title = "Synced to Cloud";
+        btn.classList.add("downloaded");
       }
     }
   });
 }
 
-async function checkDownloadStatus(chapter, buttonEl) {
-  try {
-    const timestamp = new Date().getTime();
-    const response = await fetch(
-      `/api/download/status/${mangaId}/${encodeURIComponent(chapter.provider || "Unknown")}/${chapter.id}?_t=${timestamp}`,
-    );
-    const result = await response.json();
-
-    if (result.downloaded) {
-      buttonEl.textContent = "✓";
-      buttonEl.title = result.hasIssue
-        ? `Issue: Only ${result.downloadedPages} pages downloaded`
-        : `Downloaded ${result.downloadedPages}/${result.totalPages} pages`;
-      buttonEl.classList.add("downloaded");
-
-      if (result.hasIssue) {
-        buttonEl.textContent = "⚠️";
-        buttonEl.classList.remove("downloaded");
-        buttonEl.classList.add("issue");
-      }
-    }
-  } catch (error) {
-    console.error("Error checking download status:", error);
-  }
-}
+function checkDownloadStatus() {}
 
 // --- Batch Download Feature ---
 
@@ -890,7 +867,7 @@ function initDownloadModal() {
 
   if (closeBtn) closeBtn.onclick = closeDownloadModal;
   if (cancelBtn) cancelBtn.onclick = closeDownloadModal;
-  if (startBtn) startBtn.onclick = startBatchDownload;
+  if (startBtn) startBtn.onclick = startBatchSync;
 
   // Update stats on input change
   const providerSelect = document.getElementById("downloadProviderSelect");
@@ -934,7 +911,7 @@ function autoFillRange() {
   }
 }
 
-function openDownloadModal() {
+async function openDownloadModal() {
   // Ensure the modal HTML exists in the DOM (e.g., pre-loaded or created elsewhere)
   // If not, you might need to add a check or create it here if it's not guaranteed to exist.
   // For this change, we assume the modal HTML is already present.
@@ -969,9 +946,18 @@ function openDownloadModal() {
 
   autoFillRange(); // Auto fill based on selection
 
-  updateDownloadStats();
-
+  // Show modal first with a loading indicator while we fetch fresh sync status
   document.getElementById("downloadModal").style.display = "flex";
+  document.getElementById("downloadTotalCount").textContent =
+    "Checking synced chapters...";
+  document.getElementById("downloadEstimatedTime").textContent = "";
+
+  // Always re-fetch sync status so the count is accurate
+  await checkSyncStatus(mangaId);
+  // Also update chapter icons on the main list for anything newly synced
+  updateChapterSyncButtons();
+
+  updateDownloadStats();
 }
 
 function closeDownloadModal() {
@@ -992,7 +978,7 @@ function updateDownloadStats() {
   const mins = Math.floor(estimatedSeconds / 60);
 
   document.getElementById("downloadTotalCount").textContent =
-    `Chapters to download: ${count}`;
+    `Chapters to sync: ${count}`;
   document.getElementById("downloadEstimatedTime").textContent =
     `Est. time: ~${mins}m`;
 }
@@ -1015,18 +1001,17 @@ function getTargetChapters(provider) {
     chapters = chapters.filter((ch) => parseFloat(ch.number) <= end);
   }
 
-  // 3. Filter out ALREADY downloaded chapters
-  return chapters.filter((ch) => {
-    const stored = downloadStatusMap[ch.id];
-    return !stored || !stored.downloaded;
-  });
+  // 3. Filter out ALREADY synced chapters
+  return chapters.filter((ch) => !syncedChaptersSet.has(ch.url));
 }
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function startBatchDownload() {
+async function startBatchSync() {
+  if (isDownloading) return;
+
   const provider = document.getElementById("downloadProviderSelect").value;
   const delaySec =
     parseInt(document.getElementById("downloadDelayInput").value) || 3;
@@ -1035,7 +1020,7 @@ async function startBatchDownload() {
 
   if (targets.length === 0) {
     alert(
-      "No eligible chapters found to download (Check range or already downloaded status).",
+      "No eligible chapters found to sync (Check range or already synced status).",
     );
     return;
   }
@@ -1048,117 +1033,128 @@ async function startBatchDownload() {
   });
 
   const confirmed = await showCustomConfirm(
-    `Start background download for <strong>${targets.length}</strong> chapters?<br><br>
+    `Start Cloud Sync for <strong>${targets.length}</strong> chapters?<br><br>
      Range: Ch. ${targets[0].number} ➔ Ch. ${targets[targets.length - 1].number}<br>
-     <small>You can close this tab afterwards.</small>`,
+     <small>This will scrape and save to Cloud (MongoDB + ImageKit).</small>`,
   );
 
   if (!confirmed) return;
 
-  // Prepare payload
-  const requests = targets.map((ch) => ({
-    mangaId: mangaId,
-    provider: ch.provider || "Unknown",
-    chapterId: ch.id,
-    chapterNumber: ch.number,
-    url: ch.url,
-    // Note: Scraper instance is on server side
-  }));
+  // UI Setup
+  isDownloading = true;
+  const btn = document.getElementById("startDownloadBtn");
+  const originalText = btn.textContent;
+  btn.textContent = "Syncing...";
+  btn.disabled = true;
 
-  try {
-    // Disable button
-    const btn = document.getElementById("startDownloadBtn");
-    const originalText = btn.textContent;
-    btn.textContent = "Sending to Server...";
-    btn.disabled = true;
+  // Disable other interactive inputs in modal
+  const inputs = document.querySelectorAll(
+    "#downloadModal input, #downloadModal select",
+  );
+  inputs.forEach((input) => (input.disabled = true));
 
-    const response = await fetch("/api/download/batch", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requests, delay: delaySec }),
-    });
+  const progressArea = document.getElementById("downloadProgressArea");
+  const progressText = document.getElementById("downloadProgressText");
+  progressArea.style.display = "block";
 
-    const result = await response.json();
+  let successCount = 0;
+  let failCount = 0;
 
-    if (result.success) {
-      toast.success(`Batch started! ${result.queued} chapters queued.`);
+  // Loop and Sync
+  for (let i = 0; i < targets.length; i++) {
+    const ch = targets[i];
+    progressText.innerHTML = `
+        🔄 <strong>Syncing ${i + 1}/${targets.length}</strong><br>
+        Chapter ${ch.number} (${ch.provider || "Unknown"})...
+    `;
 
-      document.getElementById("downloadProgressArea").style.display = "block";
-      document.getElementById("downloadProgressText").innerHTML = `
-            ✅ <strong>Batch Started!</strong><br>
-            Server is downloading ${result.queued} chapters.<br>
-            You can close this tab. Notifying when done...
-          `;
-      btn.textContent = "Done";
-
-      // Close modal and start monitoring
-      setTimeout(() => {
-        closeDownloadModal();
-        monitorBatchProgress(result.queued);
-      }, 1500);
-    } else {
-      toast.error("Failed to start batch: " + result.error);
-      btn.textContent = originalText;
-      btn.disabled = false;
-    }
-  } catch (error) {
-    console.error("Batch Request Error:", error);
-    toast.error("Network error starting batch download.");
-    document.getElementById("startDownloadBtn").disabled = false;
-  }
-}
-
-let batchMonitorInterval = null;
-
-// Helper to refresh download status map
-async function refreshDownloadStatus() {
-  if (!mangaId) return;
-  const ts = new Date().getTime();
-  try {
-    const statusResponse = await fetch(
-      `/api/download/status/${mangaId}?_t=${ts}`,
-    );
-    if (statusResponse.ok) {
-      const newMap = await statusResponse.json();
-      downloadStatusMap = newMap;
-      updateChapterStatuses();
-    }
-  } catch (e) {
-    console.error("Failed to refresh status:", e);
-  }
-}
-
-async function monitorBatchProgress(initialCount) {
-  if (batchMonitorInterval) clearInterval(batchMonitorInterval);
-
-  let isRunning = true;
-
-  // Initial refresh
-  refreshDownloadStatus();
-
-  batchMonitorInterval = setInterval(async () => {
     try {
-      const response = await fetch("/api/download/batch/status");
-      const data = await response.json();
+      const response = await fetch("/api/sync/chapter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: ch.url }),
+      });
 
-      if (data.success) {
-        // progressive update
-        await refreshDownloadStatus();
+      if (response.ok) {
+        successCount++;
+        // Update local set and UI
+        syncedChaptersSet.add(ch.url);
 
-        // If it was running and now it's not => Finished
-        if (isRunning && !data.isProcessing && data.queueLength === 0) {
-          clearInterval(batchMonitorInterval);
-          toast.success("Batch Download Completed! 🎉", 5000);
-          await refreshDownloadStatus();
+        // Live UI update for the specific button on the main page
+        const rowBtn = document.querySelector(
+          `.download-btn-mini[data-chapter-url="${ch.url}"]`,
+        );
+        if (rowBtn) {
+          rowBtn.textContent = "✅";
+          rowBtn.title = "Synced to Cloud";
+          rowBtn.classList.add("downloaded");
         }
-
-        isRunning = data.isProcessing;
+      } else {
+        failCount++;
+        console.error(`Failed to sync Ch. ${ch.number}`);
       }
     } catch (e) {
-      console.error("Error monitoring batch:", e);
+      failCount++;
+      console.error(`Error syncing Ch. ${ch.number}`, e);
     }
-  }, 6000);
+
+    // Delay
+    if (i < targets.length - 1) {
+      await sleep(delaySec * 1000);
+    }
+  }
+
+  // Completion
+  progressText.innerHTML = `
+      ✅ <strong>Sync Complete!</strong><br>
+      Success: ${successCount}<br>
+      Failed: ${failCount}
+  `;
+
+  if (failCount === 0) {
+    toast.success(`All ${successCount} chapters synced successfully! 🎉`);
+  } else {
+    toast.warning(
+      `Sync complete. Success: ${successCount}, Failed: ${failCount}`,
+    );
+  }
+
+  btn.textContent = "Done";
+  btn.disabled = false;
+  isDownloading = false;
+
+  // Re-enable inputs
+  inputs.forEach((input) => (input.disabled = false));
+
+  // Close modal after delay
+  setTimeout(() => {
+    closeDownloadModal();
+    // Reset UI
+    progressArea.style.display = "none";
+    btn.textContent = originalText;
+  }, 3000);
 }
+
+// Quick Sync Missing shortcut
+async function startQuickSyncMissing() {
+  // 1. Open modal (auto-fill will handle range)
+  openDownloadModal();
+
+  const provider = document.getElementById("downloadProviderSelect").value;
+  const targets = getTargetChapters(provider);
+
+  if (targets.length === 0) {
+    toast.info("All chapters are already synced! ✨");
+    closeDownloadModal();
+    return;
+  }
+
+  toast.info(`Ready to sync ${targets.length} missing chapters. Click Start!`);
+}
+
+// Obsolete monitoring functions removed
+// let batchMonitorInterval = null;
+// refreshDownloadStatus removed
 
 async function scrapeMangaDetails() {
   if (!confirm("This will scrape and update the manga details. Continue?")) {
@@ -1324,22 +1320,9 @@ saveNoteBtn.addEventListener("click", () => {
 // Custom list functionality moved to list-modal.js
 
 // Refresh download status when page is shown (e.g. back navigation)
+// Refresh download status removed
 window.addEventListener("pageshow", async () => {
-  if (!mangaId) return;
-
-  // Batch update on back navigation
-  const timestamp = new Date().getTime();
-  try {
-    const statusResponse = await fetch(
-      `/api/download/status/${mangaId}?_t=${timestamp}`,
-    );
-    if (statusResponse.ok) {
-      downloadStatusMap = await statusResponse.json();
-      updateChapterStatuses();
-    }
-  } catch (e) {
-    console.error("Failed to refresh status:", e);
-  }
+  // No-op
 });
 
 // --- Helper for Custom Confirmation Modal ---
