@@ -109,7 +109,25 @@ app.get("/api/chapter", async (req, res) => {
       const chapterId = qChapterId || (urlMatch ? urlMatch[2] : null);
       // Note: urlMatch[3] would be chapter number if URL format is consistent
 
-      const provider = qProvider || result.metadata.provider || "Unknown";
+      // Determine provider: Prefer Scraper unless generic/unknown
+      // Logic: Scraper > Query Param > "Unknown"
+      // Exception: If Scraper="Official" and Query="Utoon", keep "Utoon"
+
+      const scrapedProvider = result.metadata.provider;
+      let provider = qProvider || "Unknown";
+
+      if (scrapedProvider && scrapedProvider.toLowerCase() !== "unknown") {
+        provider = scrapedProvider;
+        // Downgrade "Official" if we have better
+        if (
+          scrapedProvider.toLowerCase() === "official" &&
+          qProvider &&
+          qProvider.toLowerCase() !== "unknown" &&
+          qProvider.toLowerCase() !== "official"
+        ) {
+          provider = qProvider;
+        }
+      }
 
       // Extract chapter number
       let chapterNumber = null;
