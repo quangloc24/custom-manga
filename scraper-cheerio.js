@@ -322,7 +322,7 @@ class MangaScraperCheerio {
             .replace(/^-+|-+$/g, ""); // Trim dashes
 
           // Concurrent Uploads (Batch by 10)
-          const BATCH_SIZE = 20;
+          const BATCH_SIZE = 30;
           for (let i = 0; i < images.length; i += BATCH_SIZE) {
             const batchPromises = images
               .slice(i, i + BATCH_SIZE)
