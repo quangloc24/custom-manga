@@ -284,12 +284,8 @@ function displayChapter(data) {
     imgElement.className = "manga-image";
     imgElement.alt = img.alt || `Page ${index + 1}`;
 
-    // Use proxy for external images to avoid CORS, use local URLs directly
-    const isLocal = img.url.startsWith("/api/");
-    const imageUrl = isLocal
-      ? img.url
-      : `/api/proxy-image?url=${encodeURIComponent(img.url)}`;
-    imgElement.src = imageUrl;
+    // Load images directly in browser - browser has cf_clearance cookie, server does not
+    imgElement.src = img.url;
 
     // Add loading indicator
     const loadingDiv = document.createElement("div");
