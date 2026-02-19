@@ -11,13 +11,18 @@ class MangaScraperCheerio {
     try {
       console.log(`Scraping chapter from: ${url}`);
 
+      const cookieParts = [
+        process.env.CF_CLEARANCE && `cf_clearance=${process.env.CF_CLEARANCE}`,
+        process.env.COMIX_SSID && `SSID=${process.env.COMIX_SSID}`,
+        process.env.COMIX_XSRF_TOKEN &&
+          `xsrf-token=${process.env.COMIX_XSRF_TOKEN}`,
+      ].filter(Boolean);
+
       const response = await axios.get(url, {
         headers: {
           "User-Agent": this.userAgent,
           Referer: "https://comix.to/",
-          ...(process.env.CF_CLEARANCE && {
-            Cookie: `cf_clearance=${process.env.CF_CLEARANCE}`,
-          }),
+          ...(cookieParts.length && { Cookie: cookieParts.join("; ") }),
         },
         timeout: 30000,
       });
