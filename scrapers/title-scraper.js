@@ -16,6 +16,9 @@ class TitleScraper {
         headers: {
           "User-Agent": this.userAgent,
           Referer: "https://comix.to/",
+          ...(process.env.CF_CLEARANCE && {
+            Cookie: `cf_clearance=${process.env.CF_CLEARANCE}`,
+          }),
         },
         timeout: 30000,
       });
@@ -220,6 +223,9 @@ class TitleScraper {
           headers: {
             "User-Agent": this.userAgent,
             Referer: `https://comix.to/title/${fullSlug}`,
+            ...(process.env.CF_CLEARANCE && {
+              Cookie: `cf_clearance=${process.env.CF_CLEARANCE}`,
+            }),
           },
           timeout: 15000,
         });

@@ -15,6 +15,9 @@ class HomepageScraper {
         headers: {
           "User-Agent": this.userAgent,
           Referer: "https://comix.to/",
+          ...(process.env.CF_CLEARANCE && {
+            Cookie: `cf_clearance=${process.env.CF_CLEARANCE}`,
+          }),
         },
         timeout: 30000,
       });
