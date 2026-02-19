@@ -1,5 +1,5 @@
-const axios = require("axios");
 const cheerio = require("cheerio");
+const { getBrowser } = require("../utils/browser");
 
 class HomepageScraper {
   constructor() {
@@ -8,26 +8,23 @@ class HomepageScraper {
   }
 
   async scrapeHomepage() {
+    let page = null;
     try {
       console.log("Scraping homepage: https://comix.to/home");
 
-      const cookieParts = [
-        process.env.CF_CLEARANCE && `cf_clearance=${process.env.CF_CLEARANCE}`,
-        process.env.COMIX_SSID && `SSID=${process.env.COMIX_SSID}`,
-        process.env.COMIX_XSRF_TOKEN &&
-          `xsrf-token=${process.env.COMIX_XSRF_TOKEN}`,
-      ].filter(Boolean);
-
-      const response = await axios.get("https://comix.to/home", {
-        headers: {
-          "User-Agent": this.userAgent,
-          Referer: "https://comix.to/",
-          ...(cookieParts.length && { Cookie: cookieParts.join("; ") }),
-        },
-        timeout: 30000,
+      const browser = await getBrowser();
+      page = await browser.newPage();
+      await page.setUserAgent(this.userAgent);
+      await page.goto("https://comix.to/home", {
+        waitUntil: "networkidle2",
+        timeout: 60000,
       });
+      await page.waitForTimeout(1500);
+      const html = await page.content();
+      await page.close();
+      page = null;
 
-      const $ = cheerio.load(response.data);
+      const $ = cheerio.load(html);
       const mangas = [];
       const seenIds = new Set();
 
@@ -82,6 +79,11 @@ class HomepageScraper {
       };
     } catch (error) {
       console.error("❌ Error scraping homepage:", error.message);
+      if (page) {
+        try {
+          await page.close();
+        } catch (_) {}
+      }
       return {
         success: false,
         error: error.message,

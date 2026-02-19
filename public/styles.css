@@ -329,7 +329,8 @@ body {
 
 .manga-image-wrapper {
   width: 100%;
-  max-width: 900px;
+  max-width: 709px; /* Default PC size per user request (matches source) */
+  margin: 0 auto;
   position: relative;
   overflow: hidden;
   border-radius: 8px;

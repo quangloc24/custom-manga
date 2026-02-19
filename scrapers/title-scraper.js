@@ -1,6 +1,6 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
-const puppeteer = require("puppeteer");
+const { getBrowser } = require("../utils/browser");
 
 class TitleScraper {
   constructor() {
@@ -12,23 +12,14 @@ class TitleScraper {
     try {
       console.log(`Scraping manga details from: ${url}`);
 
-      const cookieParts = [
-        process.env.CF_CLEARANCE && `cf_clearance=${process.env.CF_CLEARANCE}`,
-        process.env.COMIX_SSID && `SSID=${process.env.COMIX_SSID}`,
-        process.env.COMIX_XSRF_TOKEN &&
-          `xsrf-token=${process.env.COMIX_XSRF_TOKEN}`,
-      ].filter(Boolean);
-
-      const response = await axios.get(url, {
-        headers: {
-          "User-Agent": this.userAgent,
-          Referer: "https://comix.to/",
-          ...(cookieParts.length && { Cookie: cookieParts.join("; ") }),
-        },
-        timeout: 30000,
-      });
-
-      const html = response.data;
+      // Use puppeteer-stealth to bypass Cloudflare on the HTML page
+      const browser = await getBrowser();
+      const page = await browser.newPage();
+      await page.setUserAgent(this.userAgent);
+      await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
+      await page.waitForTimeout(1500);
+      const html = await page.content();
+      await page.close();
       const $ = cheerio.load(html);
 
       // Extract manga ID from URL (full slug and short ID)
@@ -236,7 +227,6 @@ class TitleScraper {
           headers: {
             "User-Agent": this.userAgent,
             Referer: `https://comix.to/title/${fullSlug}`,
-            ...(cookieParts.length && { Cookie: cookieParts.join("; ") }),
           },
           timeout: 15000,
         });

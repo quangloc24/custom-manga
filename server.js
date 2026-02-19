@@ -9,7 +9,8 @@ const TitleScraper = require("./scrapers/title-scraper");
 const DataManager = require("./utils/data-manager");
 const ChapterDownloadManager = require("./utils/chapter-download-manager");
 const AutoUpdater = require("./utils/auto-updater");
-
+const dns = require("dns");
+dns.setDefaultResultOrder("ipv4first");
 const app = express();
 const mongoose = require("mongoose");
 const PORT = process.env.PORT || 3000;
@@ -100,7 +101,10 @@ app.get("/api/chapter", async (req, res) => {
 
     if (result.success && result.metadata) {
       // Try to extract mangaId and chapterId from URL if not provided
-      const urlMatch = url.match(/\/title\/([^\/]+)\/(\d+)-chapter-(\d+)/);
+      // Support formats: /title/slug/123-chapter-456, /title/slug/chapter-456, etc.
+      // mangaId is segment after /title/
+      // chapterId is last segment
+      const urlMatch = url.match(/\/title\/([^\/]+)\/([^\/?]+)/);
       const mangaId = qMangaId || (urlMatch ? urlMatch[1] : null);
       const chapterId = qChapterId || (urlMatch ? urlMatch[2] : null);
       // Note: urlMatch[3] would be chapter number if URL format is consistent
@@ -115,8 +119,15 @@ app.get("/api/chapter", async (req, res) => {
       }
 
       // Fallback to URL extraction for chapter number if not found in metadata
-      if (!chapterNumber && urlMatch && urlMatch[3]) {
-        chapterNumber = urlMatch[3];
+      if (!chapterNumber && chapterId) {
+        const numMatch = chapterId.match(/chapter-(\d+(\.\d+)?)/);
+        if (numMatch) {
+          chapterNumber = numMatch[1];
+        } else {
+          // Try just finding the number at the end if format is like "14"
+          const simpleMatch = chapterId.match(/(\d+(\.\d+)?)$/);
+          if (simpleMatch) chapterNumber = simpleMatch[1];
+        }
       } else if (!chapterNumber) {
         // Try one more regex on URL common format
         const numMatch = url.match(/-chapter-(\d+(\.\d+)?)/);
@@ -371,12 +382,39 @@ app.post("/api/download/chapter", async (req, res) => {
       });
     }
 
+    // Use scraped metadata if available to ensure correct provider/folder name
+    // This fixes the "Unknown" folder issue if the frontend sent "unknown"
+    let finalProvider = provider;
+    if (chapterData.metadata && chapterData.metadata.provider) {
+      const scraped = chapterData.metadata.provider;
+      if (scraped.toLowerCase() !== "unknown") {
+        finalProvider = scraped;
+        // If scraper says "Official", but we have a specific provider in request (e.g. from URL), prefer request
+        if (
+          scraped.toLowerCase() === "official" &&
+          provider &&
+          provider.toLowerCase() !== "unknown" &&
+          provider.toLowerCase() !== "official"
+        ) {
+          finalProvider = provider;
+        }
+      }
+    }
+
+    // Extract chapter number from metadata if available
+    let finalChapterNumber = chapterNumber;
+    if (chapterData.metadata && chapterData.metadata.chapter) {
+      // metadata.chapter is usually "Chapter 14", extract number
+      const match = chapterData.metadata.chapter.match(/(\d+(\.\d+)?)/);
+      if (match) finalChapterNumber = match[1];
+    }
+
     // Download chapter
     const result = await downloadManager.downloadChapter(
       mangaId,
-      provider,
+      finalProvider,
       chapterId,
-      chapterNumber,
+      finalChapterNumber,
       chapterData.images,
       scraper,
     );
