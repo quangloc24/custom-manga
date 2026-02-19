@@ -330,7 +330,101 @@ app.post("/api/sync/chapter", async (req, res) => {
   }
 });
 
-// ===== READING HISTORY API =====
+// ===== SERVER-SIDE BATCH SYNC (runs in background, survives page reload) =====
+
+// In-memory job store  { jobId -> job }
+const batchJobs = {};
+
+function makeSleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// POST /api/sync/batch
+// Body: { chapters: [{url, number, provider}], delaySec }
+// Returns immediately with jobId — processing runs in the background.
+app.post("/api/sync/batch", (req, res) => {
+  const { chapters, delaySec = 5 } = req.body;
+
+  if (!chapters || chapters.length === 0) {
+    return res
+      .status(400)
+      .json({ success: false, error: "No chapters provided" });
+  }
+
+  const jobId = `job-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const job = {
+    id: jobId,
+    total: chapters.length,
+    done: 0,
+    success: 0,
+    failed: 0,
+    running: true,
+    complete: false,
+    currentChapter: null,
+    startedAt: new Date().toISOString(),
+  };
+  batchJobs[jobId] = job;
+
+  // Fire-and-forget background loop
+  (async () => {
+    console.log(
+      `☁️ [BatchJob ${jobId}] Starting — ${chapters.length} chapters, ${delaySec}s delay`,
+    );
+    for (let i = 0; i < chapters.length; i++) {
+      const ch = chapters[i];
+      job.currentChapter = `Ch. ${ch.number}`;
+      try {
+        const result = await scraper.scrapeChapter(ch.url);
+        if (result.success) {
+          job.success++;
+          console.log(
+            `☁️ [BatchJob ${jobId}] ✅ Synced Ch.${ch.number} (${i + 1}/${chapters.length})`,
+          );
+        } else {
+          job.failed++;
+          console.warn(`☁️ [BatchJob ${jobId}] ❌ Failed Ch.${ch.number}`);
+        }
+      } catch (e) {
+        job.failed++;
+        console.error(
+          `☁️ [BatchJob ${jobId}] ❌ Error Ch.${ch.number}:`,
+          e.message,
+        );
+      }
+      job.done++;
+      if (i < chapters.length - 1) {
+        await makeSleep(delaySec * 1000);
+      }
+    }
+    job.running = false;
+    job.complete = true;
+    job.currentChapter = null;
+    console.log(
+      `☁️ [BatchJob ${jobId}] Done — ✅${job.success} ❌${job.failed}`,
+    );
+
+    // Auto-cleanup after 10 minutes
+    setTimeout(
+      () => {
+        delete batchJobs[jobId];
+      },
+      10 * 60 * 1000,
+    );
+  })();
+
+  res.json({ success: true, jobId });
+});
+
+// GET /api/sync/batch/status/:jobId
+app.get("/api/sync/batch/status/:jobId", (req, res) => {
+  const job = batchJobs[req.params.jobId];
+  if (!job) {
+    return res
+      .status(404)
+      .json({ success: false, error: "Job not found or expired" });
+  }
+  res.json({ success: true, job });
+});
 
 // Mark chapter as read
 app.post("/api/user/read-chapter", async (req, res) => {

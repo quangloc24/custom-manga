@@ -963,6 +963,11 @@ async function openDownloadModal() {
 function closeDownloadModal() {
   const modal = document.getElementById("downloadModal");
   if (modal) modal.style.display = "none";
+  // Clear progress poller if modal closed early (server job keeps running)
+  if (window._batchPollInterval) {
+    clearInterval(window._batchPollInterval);
+    window._batchPollInterval = null;
+  }
 }
 
 function updateDownloadStats() {
@@ -1019,120 +1024,116 @@ async function startBatchSync() {
   const targets = getTargetChapters(provider);
 
   if (targets.length === 0) {
-    alert(
-      "No eligible chapters found to sync (Check range or already synced status).",
-    );
+    toast.info("All chapters already synced! ✨");
     return;
   }
 
-  // Sort targets by chapter number (Ascending: Lowest to Highest)
-  targets.sort((a, b) => {
-    const numA = parseFloat(a.number);
-    const numB = parseFloat(b.number);
-    return numA - numB;
-  });
+  // Sort ascending (lowest chapter first)
+  targets.sort((a, b) => parseFloat(a.number) - parseFloat(b.number));
 
   const confirmed = await showCustomConfirm(
     `Start Cloud Sync for <strong>${targets.length}</strong> chapters?<br><br>
      Range: Ch. ${targets[0].number} ➔ Ch. ${targets[targets.length - 1].number}<br>
-     <small>This will scrape and save to Cloud (MongoDB + ImageKit).</small>`,
+     <small>The server will run this in the background — safe to close the page.</small>`,
   );
 
   if (!confirmed) return;
 
-  // UI Setup
+  // --- Send job to server ---
+  let jobId;
+  try {
+    const resp = await fetch("/api/sync/batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chapters: targets.map((ch) => ({
+          url: ch.url,
+          number: ch.number,
+          provider: ch.provider,
+        })),
+        delaySec,
+      }),
+    });
+    const data = await resp.json();
+    if (!data.success)
+      throw new Error(data.error || "Server rejected batch job");
+    jobId = data.jobId;
+  } catch (err) {
+    toast.error(`Failed to start batch sync: ${err.message}`);
+    return;
+  }
+
+  // --- Show progress in modal ---
   isDownloading = true;
   const btn = document.getElementById("startDownloadBtn");
-  const originalText = btn.textContent;
-  btn.textContent = "Syncing...";
+  btn.textContent = "Running on server…";
   btn.disabled = true;
-
-  // Disable other interactive inputs in modal
-  const inputs = document.querySelectorAll(
-    "#downloadModal input, #downloadModal select",
-  );
-  inputs.forEach((input) => (input.disabled = true));
 
   const progressArea = document.getElementById("downloadProgressArea");
   const progressText = document.getElementById("downloadProgressText");
   progressArea.style.display = "block";
-
-  let successCount = 0;
-  let failCount = 0;
-
-  // Loop and Sync
-  for (let i = 0; i < targets.length; i++) {
-    const ch = targets[i];
-    progressText.innerHTML = `
-        🔄 <strong>Syncing ${i + 1}/${targets.length}</strong><br>
-        Chapter ${ch.number} (${ch.provider || "Unknown"})...
-    `;
-
-    try {
-      const response = await fetch("/api/sync/chapter", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: ch.url }),
-      });
-
-      if (response.ok) {
-        successCount++;
-        // Update local set and UI
-        syncedChaptersSet.add(ch.url);
-
-        // Live UI update for the specific button on the main page
-        const rowBtn = document.querySelector(
-          `.download-btn-mini[data-chapter-url="${ch.url}"]`,
-        );
-        if (rowBtn) {
-          rowBtn.textContent = "✅";
-          rowBtn.title = "Synced to Cloud";
-          rowBtn.classList.add("downloaded");
-        }
-      } else {
-        failCount++;
-        console.error(`Failed to sync Ch. ${ch.number}`);
-      }
-    } catch (e) {
-      failCount++;
-      console.error(`Error syncing Ch. ${ch.number}`, e);
-    }
-
-    // Delay
-    if (i < targets.length - 1) {
-      await sleep(delaySec * 1000);
-    }
-  }
-
-  // Completion
   progressText.innerHTML = `
-      ✅ <strong>Sync Complete!</strong><br>
-      Success: ${successCount}<br>
-      Failed: ${failCount}
+    🚀 <strong>Job started on server!</strong><br>
+    <small>Job ID: ${jobId}</small><br>
+    Syncing ${targets.length} chapters in the background…<br>
+    <small>You can close this modal — sync will continue running.</small>
   `;
 
-  if (failCount === 0) {
-    toast.success(`All ${successCount} chapters synced successfully! 🎉`);
-  } else {
-    toast.warning(
-      `Sync complete. Success: ${successCount}, Failed: ${failCount}`,
-    );
-  }
+  toast.success(
+    `☁️ Batch sync started on server — ${targets.length} chapters queued!`,
+  );
 
-  btn.textContent = "Done";
-  btn.disabled = false;
-  isDownloading = false;
+  // Poll job progress every 5s while modal is open
+  const pollInterval = setInterval(async () => {
+    try {
+      const r = await fetch(`/api/sync/batch/status/${jobId}`);
+      const data = await r.json();
+      if (!data.success) {
+        clearInterval(pollInterval);
+        return;
+      }
+      const job = data.job;
 
-  // Re-enable inputs
-  inputs.forEach((input) => (input.disabled = false));
+      progressText.innerHTML = `
+        🔄 <strong>${job.done}/${job.total}</strong> chapters processed<br>
+        ${job.currentChapter ? `Currently: <em>${job.currentChapter}</em><br>` : ""}
+        ✅ Success: ${job.success} &nbsp; ❌ Failed: ${job.failed}
+      `;
 
-  // Close modal after delay
-  setTimeout(() => {
-    closeDownloadModal();
-    // Reset UI
-    progressArea.style.display = "none";
-    btn.textContent = originalText;
-  }, 3000);
+      if (job.complete) {
+        clearInterval(pollInterval);
+        progressText.innerHTML = `
+          ✅ <strong>Sync Complete!</strong><br>
+          Success: ${job.success}<br>
+          Failed: ${job.failed}
+        `;
+        btn.textContent = "Done";
+        btn.disabled = false;
+        isDownloading = false;
+
+        if (job.failed === 0) {
+          toast.success(`All ${job.success} chapters synced! 🎉`);
+        } else {
+          toast.warning(`Sync done. ✅${job.success} ❌${job.failed}`);
+        }
+
+        // Refresh sync ticks
+        await checkSyncStatus(mangaId);
+        updateChapterSyncButtons();
+
+        setTimeout(() => {
+          closeDownloadModal();
+          progressArea.style.display = "none";
+          btn.textContent = "Start Cloud Sync";
+        }, 3000);
+      }
+    } catch (_) {
+      /* ignore transient errors */
+    }
+  }, 5000);
+
+  // Store interval so closing modal cleans it up
+  window._batchPollInterval = pollInterval;
 }
 
 // Quick Sync Missing shortcut
