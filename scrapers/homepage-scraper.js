@@ -2,6 +2,7 @@ const axios = require("axios");
 const cheerio = require("cheerio");
 const { zencf } = require('zencf');
 const cookieManager = require('../utils/cookie-manager');
+const { getAxiosProxyConfig, buildComixHeaders } = require('../utils/comix-request');
 
 class HomepageScraper {
   constructor() {
@@ -20,11 +21,12 @@ class HomepageScraper {
         console.log("    Trying Axios with cookies first...");
         const cookieStr = await cookieManager.getCookieString();
         const response = await axios.get("https://comix.to/home", {
-          headers: {
-            "User-Agent": this.userAgent,
-            Cookie: cookieStr,
-            Referer: "https://comix.to/",
-          },
+          headers: buildComixHeaders({
+            userAgent: this.userAgent,
+            cookie: cookieStr,
+            referer: "https://comix.to/",
+          }),
+          ...getAxiosProxyConfig(),
           timeout: 15000,
         });
         html = response.data;

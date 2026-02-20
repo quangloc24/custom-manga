@@ -59,6 +59,7 @@ async function getBrowser() {
   };
 
   // Add proxy if PROXY_URL is set
+  let proxyServer = null;
   let proxyAuth = null;
   if (process.env.PROXY_URL) {
     try {

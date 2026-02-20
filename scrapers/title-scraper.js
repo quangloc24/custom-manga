@@ -2,6 +2,7 @@ const axios = require("axios");
 const cheerio = require("cheerio");
 const { zencf } = require('zencf');
 const cookieManager = require('../utils/cookie-manager');
+const { getAxiosProxyConfig, buildComixHeaders } = require('../utils/comix-request');
 
 class TitleScraper {
   constructor() {
@@ -21,11 +22,12 @@ class TitleScraper {
         console.log("    Trying Axios with cookies first...");
         const cookieStr = await cookieManager.getCookieString();
         const response = await axios.get(url, {
-          headers: {
-            "User-Agent": this.userAgent,
-            Cookie: cookieStr,
-            Referer: "https://comix.to/",
-          },
+          headers: buildComixHeaders({
+            userAgent: this.userAgent,
+            cookie: cookieStr,
+            referer: "https://comix.to/",
+          }),
+          ...getAxiosProxyConfig(),
           timeout: 15000,
         });
         html = response.data;
@@ -241,23 +243,36 @@ class TitleScraper {
       let page = 1;
       let hasMore = true;
 
+      let retriedWithFreshCookies = false;
       while (hasMore) {
         const apiUrl = `https://comix.to/api/v2/manga/${shortId}/chapters?limit=${limit}&page=${page}&order[number]=desc`;
 
         console.log(`   Fetching page ${page}...`);
 
-        const headers = {
-          "User-Agent": this.userAgent,
-          Referer: `https://comix.to/title/${fullSlug}`,
-        };
-        if (cookieStr) {
-          headers.Cookie = cookieStr;
-        }
-
-        const response = await axios.get(apiUrl, {
-          headers: headers,
-          timeout: 15000,
+        const headers = buildComixHeaders({
+          userAgent: this.userAgent,
+          cookie: cookieStr,
+          referer: `https://comix.to/title/${fullSlug}`,
+          accept: 'application/json, text/plain, */*',
         });
+
+        let response;
+        try {
+          response = await axios.get(apiUrl, {
+            headers,
+            ...getAxiosProxyConfig(),
+            timeout: 15000,
+          });
+        } catch (error) {
+          const status = error?.response?.status;
+          if (status === 403 && !retriedWithFreshCookies) {
+            retriedWithFreshCookies = true;
+            console.log("      403 from chapter API, forcing cookie refresh and retrying...");
+            cookieStr = await cookieManager.getCookieString(true);
+            continue;
+          }
+          throw error;
+        }
 
         const data = response.data;
 

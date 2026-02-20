@@ -7,6 +7,7 @@ const path = require("path");
 const sharp = require("sharp");
 const { zencf: cf } = require('zencf');
 const cookieManager = require('./utils/cookie-manager');
+const { getAxiosProxyConfig, buildComixHeaders } = require('./utils/comix-request');
 
 class MangaScraperCheerio {
   constructor() {
@@ -104,11 +105,12 @@ class MangaScraperCheerio {
         console.log("    Trying Axios with cookies first...");
         const cookieStr = await cookieManager.getCookieString();
         const response = await axios.get(url, {
-          headers: {
-            "User-Agent": this.userAgent,
-            Cookie: cookieStr,
-            Referer: "https://comix.to/",
-          },
+          headers: buildComixHeaders({
+            userAgent: this.userAgent,
+            cookie: cookieStr,
+            referer: "https://comix.to/",
+          }),
+          ...getAxiosProxyConfig(),
           timeout: 15000,
         });
         html = response.data;
