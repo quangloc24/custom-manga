@@ -1,6 +1,6 @@
-const { uploadToImageKit } = require("./imagekit");
-const { uploadToImgBB } = require("./imgbb");
-const { uploadToFreeImage } = require("./freeimage");
+const { uploadToImageKit } = require("./storage-providers/imagekit");
+const { uploadToImgBB } = require("./storage-providers/imgbb");
+const { uploadToFreeImage } = require("./storage-providers/freeimage");
 
 function getStorageProvider() {
   const configured = (process.env.STORAGE_PROVIDER || "").trim().toLowerCase();
