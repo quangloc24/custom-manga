@@ -21,32 +21,17 @@ class MangaScraperCheerio {
     }
   }
 
-  // Helper to build cookie string from .env
-  _getCookieString() {
+  // Helper to extract cookies from Puppeteer page context as a string
+  async _getCookieStringFromBrowser(page) {
+    const cookies = await page.cookies();
     const parts = [];
-    if (process.env.CF_CLEARANCE)
-      parts.push(`cf_clearance=${process.env.CF_CLEARANCE}`);
-    if (process.env.COMIX_SSID) parts.push(`SSID=${process.env.COMIX_SSID}`);
-    if (process.env.COMIX_XSRF_TOKEN)
-      parts.push(`xsrf-token=${process.env.COMIX_XSRF_TOKEN}`);
+    for (const cookie of cookies) {
+      // Only include cookies for comix.to domain (or relevant domains)
+      if (cookie.domain.includes("comix.to") || cookie.domain === ".comix.to") {
+        parts.push(`${cookie.name}=${cookie.value}`);
+      }
+    }
     return parts.join("; ");
-  }
-
-  // Helper to parse cookie string for Puppeteer
-  _parseCookies(cookieStr, domain = "comix.to") {
-    if (!cookieStr) return [];
-    return cookieStr.split(";").map((pair) => {
-      const [name, ...valueParts] = pair.trim().split("=");
-      return {
-        name: name,
-        value: valueParts.join("="),
-        domain: domain,
-        path: "/",
-        secure: true,
-        httpOnly: name.toLowerCase() === "ssid",
-        sameSite: "Lax",
-      };
-    });
   }
 
   // Helper to extract image data from raw HTML using regex
@@ -125,11 +110,44 @@ class MangaScraperCheerio {
         provider: "Unknown",
       };
 
-      // --- LAYER 1: Axios + Cookies (Best for VPS) ---
-      const cookieStr = this._getCookieString();
-      if (cookieStr) {
+      let page = null;
+      let cookieStr = "";
+
+      try {
+        console.log("    launching Puppeteer with Cloudflare clearance...");
+        const browser = await getBrowser();
+        page = await browser.newPage();
+        await page.setUserAgent(this.userAgent);
+
+        // Navigate to the chapter page - CloudflareClearancePlugin will auto-solve challenge
+        await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
+        await new Promise((r) => setTimeout(r, 2000)); // Wait for hydration
+
+        html = await page.content();
+
+        // Extract cookies from the browser to use in Axios requests
+        cookieStr = await this._getCookieStringFromBrowser(page);
+        console.log(`      Obtained ${cookieStr.split(';').filter(c => c).length} cookies`);
+
+        // Try to extract images from HTML
+        const extracted = this._extractImagesFromHtml(html);
+        if (extracted.images.length > 0) {
+          console.log(
+            `   ✅ [Puppeteer] Extracted ${extracted.images.length} images`,
+          );
+          images = extracted.images;
+          metadata = { ...metadata, ...extracted.metadata };
+        }
+      } catch (e) {
+        console.log(`   ⚠️ [Puppeteer] Error: ${e.message}`);
+        if (page) await page.close();
+        page = null;
+      }
+
+      // --- LAYER 2: Axios + Cookies obtained from Puppeteer (if Puppeteer succeeded but we need to refetch or fallback) ---
+      if (images.length === 0 && cookieStr) {
         try {
-          console.log("   尝试 Layer 1 (Axios + Cookies)...");
+          console.log("   尝试 Layer 2 (Axios + Auto-Obtained Cookies)...");
           const response = await axios.get(url, {
             headers: {
               "User-Agent": this.userAgent,
@@ -142,48 +160,13 @@ class MangaScraperCheerio {
           const extracted = this._extractImagesFromHtml(html);
           if (extracted.images.length > 0) {
             console.log(
-              `   ✅ [Axios] Extracted ${extracted.images.length} images using cookies`,
+              `   ✅ [Axios] Extracted ${extracted.images.length} images using auto-obtained cookies`,
             );
             images = extracted.images;
             metadata = { ...metadata, ...extracted.metadata };
           }
         } catch (e) {
-          console.log(`   ⚠️ [Axios] Failed/Blocked: ${e.message}`);
-        }
-      }
-
-      // --- LAYER 2: Puppeteer + Cookie Injection ---
-      if (images.length === 0) {
-        let page = null;
-        try {
-          console.log("   尝试 Layer 2 (Puppeteer + Cookie Injection)...");
-          const browser = await getBrowser();
-          page = await browser.newPage();
-          await page.setUserAgent(this.userAgent);
-
-          if (cookieStr) {
-            const pCookies = this._parseCookies(cookieStr);
-            await page.setCookie(...pCookies);
-            console.log("      Injected cookies into browser page");
-          }
-
-          await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
-          // Short wait for hydration
-          await new Promise((r) => setTimeout(r, 2000));
-
-          html = await page.content();
-          const extracted = this._extractImagesFromHtml(html);
-          if (extracted.images.length > 0) {
-            console.log(
-              `   ✅ [Puppeteer] Extracted ${extracted.images.length} images`,
-            );
-            images = extracted.images;
-            metadata = { ...metadata, ...extracted.metadata };
-          }
-        } catch (e) {
-          console.log(`   ⚠️ [Puppeteer] Error: ${e.message}`);
-        } finally {
-          if (page) await page.close();
+          console.log(`   ⚠️ [Axios] Failed: ${e.message}`);
         }
       }
 

@@ -11,6 +11,7 @@ const DataManager = require("./utils/data-manager");
 const AutoUpdater = require("./utils/auto-updater");
 const dns = require("dns");
 dns.setDefaultResultOrder("ipv4first");
+dns.setServers(["1.1.1.1"]);
 const app = express();
 const mongoose = require("mongoose");
 const PORT = process.env.PORT || 3000;

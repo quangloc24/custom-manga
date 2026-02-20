@@ -132,3 +132,6 @@ Desktop.ini
 data/
 cache/
 downloads/
+
+
+.claude/
