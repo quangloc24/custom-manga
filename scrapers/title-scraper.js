@@ -171,7 +171,7 @@ class TitleScraper {
       if (statusEl.length > 0) {
         const statusText = statusEl.text().trim();
         const statusMatch = statusText.match(
-          /(RELEASING|FINISHED|ON_HIATUS|COMPLETED)/i,
+          /(RELEASING|FINISHED|ON HIATUS|COMPLETED)/i,
         );
         if (statusMatch) {
           mangaData.status = statusMatch[1].toLowerCase();
