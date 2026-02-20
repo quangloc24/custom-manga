@@ -20,6 +20,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
+    "https-proxy-agent": "^7.0.6",
     "imagekit": "^6.0.0",
     "mongoose": "^9.1.5",
     "node-cron": "^4.2.1",
