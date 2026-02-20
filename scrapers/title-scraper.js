@@ -8,6 +8,19 @@ class TitleScraper {
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
   }
 
+  // Helper to extract cookies from Puppeteer page context as a string
+  async _getCookieStringFromBrowser(page) {
+    const cookies = await page.cookies();
+    const parts = [];
+    for (const cookie of cookies) {
+      // Only include cookies for comix.to domain (or relevant domains)
+      if (cookie.domain.includes("comix.to") || cookie.domain === ".comix.to") {
+        parts.push(`${cookie.name}=${cookie.value}`);
+      }
+    }
+    return parts.join("; ");
+  }
+
   async scrapeMangaDetails(url) {
     try {
       console.log(`Scraping manga details from: ${url}`);
@@ -19,6 +32,7 @@ class TitleScraper {
       await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
       await page.waitForTimeout(1500);
       const html = await page.content();
+      const cookieStr = await this._getCookieStringFromBrowser(page);
       await page.close();
       const $ = cheerio.load(html);
 
@@ -201,7 +215,7 @@ class TitleScraper {
     }
   }
 
-  async extractChaptersViaAPI(shortId, fullSlug) {
+  async extractChaptersViaAPI(shortId, fullSlug, cookieStr) {
     try {
       console.log(`   Fetching chapters via API...`);
 
@@ -215,19 +229,16 @@ class TitleScraper {
 
         console.log(`   Fetching page ${page}...`);
 
-        const cookieParts = [
-          process.env.CF_CLEARANCE &&
-            `cf_clearance=${process.env.CF_CLEARANCE}`,
-          process.env.COMIX_SSID && `SSID=${process.env.COMIX_SSID}`,
-          process.env.COMIX_XSRF_TOKEN &&
-            `xsrf-token=${process.env.COMIX_XSRF_TOKEN}`,
-        ].filter(Boolean);
+        const headers = {
+          "User-Agent": this.userAgent,
+          Referer: `https://comix.to/title/${fullSlug}`,
+        };
+        if (cookieStr) {
+          headers.Cookie = cookieStr;
+        }
 
         const response = await axios.get(apiUrl, {
-          headers: {
-            "User-Agent": this.userAgent,
-            Referer: `https://comix.to/title/${fullSlug}`,
-          },
+          headers: headers,
           timeout: 15000,
         });
 
