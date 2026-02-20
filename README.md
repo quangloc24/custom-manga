@@ -1,152 +1,160 @@
-# 📖 Manga Reader
+# Manga Reader
 
-A private manga reading site that scrapes manga images from comix.to and provides a clean, modern reading interface.
+Private manga reader/scraper focused on `comix.to`, with chapter caching in MongoDB and optional cloud image storage.
 
-## ⚠️ Disclaimer
+## Disclaimer
 
-This project is for **private use only**. Web scraping may violate the target site's Terms of Service. Use responsibly and respect the source website.
+This project is for private/personal use. Scraping may violate a target site's Terms of Service. Use responsibly.
 
-## ✨ Features
+## Features
 
-- 🎨 **Modern Dark UI** - Beautiful gradient design optimized for reading
-- 📱 **Responsive Design** - Works perfectly on mobile and desktop
-- ⌨️ **Keyboard Navigation** - Use arrow keys (←/→) to navigate chapters
-- 🖼️ **Image Proxying** - Avoids CORS issues by proxying images through backend
-- 🔄 **Chapter Navigation** - Automatic next/previous chapter detection
-- ⚡ **Fast Loading** - Puppeteer-based scraping handles dynamic content
-- 💾 **Image Caching** - 24-hour cache for faster subsequent loads
+- Scrape manga details and chapter images from `comix.to`
+- Cloudflare-aware scraping flow (browser cookie refresh + fallback strategies)
+- Persistent chapter cache in MongoDB
+- Optional cloud storage upload per chapter:
+  - `imagekit`
+  - `imgbb`
+  - `freeimage`
+- Reader UI with:
+  - chapter navigation
+  - read tracking
+  - reload/sync controls
+- Server-side batch sync jobs for chapters
+- User auth + lists + reading history
 
-## 🚀 Quick Start
+## Tech Stack
 
-### Prerequisites
+- Node.js + Express
+- MongoDB + Mongoose
+- Puppeteer (`puppeteer-extra` + stealth plugin)
+- Axios + Cheerio
+- Frontend: vanilla HTML/CSS/JS
 
-- Node.js (v14 or higher)
-- npm or yarn
+## Project Structure
 
-### Installation
-
-1. **Navigate to the project directory:**
-
-   ```bash
-   cd "e:/cua loc/linh tinh/bot/manga"
-   ```
-
-2. **Install dependencies:**
-
-   ```bash
-   npm install
-   ```
-
-3. **Create environment file:**
-
-   ```bash
-   copy .env.example .env
-   ```
-
-4. **Start the server:**
-
-   ```bash
-   npm start
-   ```
-
-5. **Open your browser:**
-   Navigate to `http://localhost:3000`
-
-## 📖 Usage
-
-1. Open the manga reader in your browser
-2. Paste a chapter URL from comix.to (e.g., `https://comix.to/title/rm2xv-the-grand-dukes-bride-is-a-hellborn-warrior/7244161-chapter-40`)
-3. Click "Load Chapter" or press Enter
-4. Enjoy reading!
-
-### Keyboard Shortcuts
-
-- `←` (Left Arrow) - Previous chapter
-- `→` (Right Arrow) - Next chapter
-- `Enter` - Load chapter (when input is focused)
-
-## 🛠️ Tech Stack
-
-### Backend
-
-- **Express.js** - Web server
-- **Puppeteer** - Web scraping (handles JavaScript-rendered content)
-- **Axios** - HTTP requests for image proxying
-- **Cheerio** - HTML parsing fallback
-- **CORS** - Cross-origin resource sharing
-
-### Frontend
-
-- **Vanilla JavaScript** - No framework dependencies
-- **Modern CSS** - Gradients, animations, glassmorphism
-- **Responsive Design** - Mobile-first approach
-
-## 📁 Project Structure
-
-```
+```text
 manga/
-├── public/
-│   ├── index.html      # Main HTML file
-│   ├── styles.css      # Styling
-│   └── app.js          # Frontend logic
-├── scraper.js          # Puppeteer scraping logic
-├── server.js           # Express server
-├── package.json        # Dependencies
-├── .env.example        # Environment variables template
-├── .gitignore          # Git ignore rules
-└── README.md           # This file
+├─ public/                       # frontend pages/scripts/styles
+├─ models/                       # mongoose models
+├─ scrapers/                     # homepage/title scrapers
+├─ utils/
+│  ├─ storage-providers/         # imagekit/imgbb/freeimage providers
+│  ├─ browser.js                 # shared puppeteer browser
+│  ├─ cookie-manager.js          # Cloudflare cookie lifecycle
+│  ├─ storage.js                 # provider selector/router
+│  └─ auto-updater.js            # scheduled updates
+├─ scraper-cheerio.js            # chapter scraper + upload flow
+├─ server.js                     # API server
+└─ .env.example                  # env template
 ```
 
-## 🔧 Configuration
+## Requirements
 
-Edit the `.env` file to customize settings:
+- Node.js 18+ (recommended)
+- MongoDB instance
 
-```env
-PORT=3000
-NODE_ENV=development
-```
+## Quick Start
 
-## 🐛 Troubleshooting
-
-### Puppeteer Installation Issues
-
-If Puppeteer fails to install, try:
+1. Install dependencies:
 
 ```bash
-npm install puppeteer --unsafe-perm=true
+npm install
 ```
 
-### Images Not Loading
+2. Create env file:
 
-- Check if the source URL is correct
-- Verify the site structure hasn't changed
-- Check browser console for errors
+```bash
+copy .env.example .env
+```
 
-### Server Won't Start
+3. Fill required env values:
 
-- Ensure port 3000 is not already in use
-- Try a different port in `.env` file
-- Check Node.js version (should be v14+)
+- `MONGODB_URI`
+- optional cloud storage keys depending on `STORAGE_PROVIDER`
 
-## 📝 API Endpoints
+4. Start server:
 
-- `GET /api/chapter?url=<manga_url>` - Scrape chapter images
-- `GET /api/proxy-image?url=<image_url>` - Proxy manga images
-- `GET /api/health` - Health check endpoint
+```bash
+npm start
+```
 
-## 🎯 Future Enhancements
+5. Open:
 
-- [ ] Bookmark/favorites system
-- [ ] Reading history
-- [ ] Multiple manga source support
-- [ ] Offline reading mode
-- [ ] Reading progress tracking
+`http://localhost:3000`
 
-## 📄 License
+## Environment Variables
 
-This project is for educational and private use only.
+See `.env.example` for full list. Main ones:
 
-## 🙏 Acknowledgments
+- App/DB
+  - `PORT`
+  - `NODE_ENV`
+  - `MONGODB_URI`
 
-- Built with Node.js and modern web technologies
-- Designed for optimal reading experience
+- Scraping
+  - `PROXY_URL` (used by scraper/browser + comix HTTP flow)
+
+- Storage selection
+  - `STORAGE_PROVIDER=imagekit|imgbb|freeimage`
+  - `STORAGE_UPLOAD_BATCH_SIZE`
+
+- ImageKit
+  - `IMAGEKIT_URL_ENDPOINT`
+  - `IMAGEKIT_PUBLIC_KEY`
+  - `IMAGEKIT_PRIVATE_KEY`
+
+- ImgBB
+  - `IMGBB_API_KEY`
+  - `IMGBB_UPLOAD_BATCH_SIZE`
+  - `IMGBB_UPLOAD_JITTER_MIN_MS`
+  - `IMGBB_UPLOAD_JITTER_MAX_MS`
+  - `IMGBB_RETRY_DELAY_MS`
+  - `IMGBB_USE_UNIQUE_NAME`
+  - `IMGBB_EXPIRATION` (optional)
+
+- Freeimage
+  - `FREEIMAGE_API_KEY`
+  - `FREEIMAGE_UPLOAD_BATCH_SIZE`
+
+- Auto updater
+  - `AUTO_UPDATE_INTERVAL_HOURS`
+  - `AUTO_UPDATE_INTERVAL_MINUTES`
+  - `AUTO_UPDATE_ON_STARTUP`
+
+## Key API Routes
+
+- Chapter + reader data
+  - `GET /api/chapter?url=...`
+
+- Library/manga
+  - `GET /api/library`
+  - `GET /api/manga/:id`
+  - `POST /api/add-manga`
+  - `POST /api/scrape/homepage`
+  - `POST /api/scrape/manga/:id`
+
+- Cloud sync
+  - `POST /api/sync/chapter`
+  - `POST /api/sync/batch`
+  - `GET /api/sync/batch/status/:jobId`
+  - `GET /api/sync/status/:mangaId`
+
+- User/auth
+  - `POST /api/auth/register`
+  - `POST /api/auth/login`
+  - `POST /api/user/read-chapter`
+  - `GET /api/user/read-chapters/:username/:mangaId`
+  - `GET /api/user/reading-history/:username`
+  - `GET /api/user/:username`
+  - `GET /api/user/:username/lists`
+  - `POST /api/user/action`
+  - `POST /api/user/list`
+
+- Health
+  - `GET /api/health`
+
+## Notes
+
+- For cloud storage uploads, failed uploads currently fall back to original source URLs.
+- Chapter sync writes are upserted by chapter URL, so re-sync updates existing stored links.
+
