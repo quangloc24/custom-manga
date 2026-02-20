@@ -10,6 +10,7 @@ const fs = require("fs");
 puppeteerExtra.use(StealthPlugin());
 
 let browserInstance = null;
+let proxyAuth = null; // { username, password } if proxy requires auth
 
 // Try to find Chromium/Chrome executable on the system (Linux VPS)
 function findChromiumPath() {
@@ -56,10 +57,36 @@ async function getBrowser() {
       "--disable-accelerated-2d-canvas",
       "--no-first-run",
       "--no-zygote",
-      "--single-process",
       "--disable-extensions",
     ],
   };
+
+  // Add proxy if PROXY_URL is set
+  let proxyServer = null;
+  let proxyAuth = null;
+  if (process.env.PROXY_URL) {
+    try {
+      const proxyUrl = new URL(process.env.PROXY_URL);
+      // Construct proxy server string without credentials: e.g., http://host:port
+      proxyServer = `${proxyUrl.protocol}//${proxyUrl.hostname}:${proxyUrl.port}`;
+      if (proxyUrl.username || proxyUrl.password) {
+        proxyAuth = {
+          username: proxyUrl.username,
+          password: proxyUrl.password,
+        };
+      }
+      console.log(`[Browser] Using proxy server: ${proxyServer}`);
+      if (proxyAuth) {
+        console.log(`[Browser] Proxy authentication enabled`);
+      }
+      launchOptions.args.push(`--proxy-server=${proxyServer}`);
+      launchOptions.args.push("--ignore-certificate-errors");
+    } catch (e) {
+      console.error(
+        "[Browser] Invalid PROXY_URL format. Expected format: http://user:pass@host:port",
+      );
+    }
+  }
 
   if (executablePath) {
     launchOptions.executablePath = executablePath;
@@ -67,6 +94,27 @@ async function getBrowser() {
 
   browserInstance = await puppeteerExtra.launch(launchOptions);
   console.log("[Browser] Launched stealth browser");
+
+  // If proxy requires auth, inject Proxy-Authorization header on all new pages
+  if (proxyAuth) {
+    browserInstance = await puppeteerExtra.launch(launchOptions);
+    console.log("[Browser] Launched stealth browser");
+
+    if (proxyAuth) {
+      browserInstance.on("targetcreated", async (target) => {
+        if (target.type() === "page") {
+          const page = await target.page();
+          if (page) {
+            await page.authenticate({
+              username: proxyAuth.username,
+              password: proxyAuth.password,
+            });
+            console.log("[Browser] Proxy authentication applied to page");
+          }
+        }
+      });
+    }
+  }
 
   browserInstance.on("disconnected", () => {
     console.log(
