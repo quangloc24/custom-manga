@@ -22,14 +22,14 @@ async function uploadToFreeImage(imageUrl) {
   }
 
   try {
+    const buffer = await downloadImageBuffer(imageUrl);
     const payload = new URLSearchParams();
     payload.append("key", apiKey);
     payload.append("action", "upload");
     payload.append("format", "json");
-    // Fast path: let Freeimage fetch directly from source URL.
-    payload.append("source", imageUrl);
+    payload.append("source", buffer.toString("base64"));
 
-    let response = await axios.post(
+    const response = await axios.post(
       "https://freeimage.host/api/1/upload",
       payload.toString(),
       {
@@ -41,41 +41,12 @@ async function uploadToFreeImage(imageUrl) {
       },
     );
 
-    let data = response?.data || {};
-    let uploadedUrl =
+    const data = response?.data || {};
+    const uploadedUrl =
       data?.image?.url ||
       data?.image?.display_url ||
       data?.url ||
       data?.data?.url;
-
-    // Fallback: some remote sources are rejected; retry with base64 upload.
-    if (!uploadedUrl) {
-      const buffer = await downloadImageBuffer(imageUrl);
-      const fallbackPayload = new URLSearchParams();
-      fallbackPayload.append("key", apiKey);
-      fallbackPayload.append("action", "upload");
-      fallbackPayload.append("format", "json");
-      fallbackPayload.append("source", buffer.toString("base64"));
-
-      response = await axios.post(
-        "https://freeimage.host/api/1/upload",
-        fallbackPayload.toString(),
-        {
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          timeout: 45000,
-          maxBodyLength: Infinity,
-        },
-      );
-
-      data = response?.data || {};
-      uploadedUrl =
-        data?.image?.url ||
-        data?.image?.display_url ||
-        data?.url ||
-        data?.data?.url;
-    }
 
     if (!uploadedUrl) {
       throw new Error("Freeimage response missing URL");

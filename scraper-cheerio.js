@@ -194,8 +194,6 @@ class MangaScraperCheerio {
           const defaultBatchSize =
             this.storageProvider === "imgbb"
               ? Number(process.env.IMGBB_UPLOAD_BATCH_SIZE || 3)
-              : this.storageProvider === "freeimage"
-                ? Number(process.env.FREEIMAGE_UPLOAD_BATCH_SIZE || 50)
               : Number(process.env.STORAGE_UPLOAD_BATCH_SIZE || 20);
           const BATCH_SIZE = Math.max(
             1,
