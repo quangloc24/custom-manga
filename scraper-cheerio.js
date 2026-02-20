@@ -1,11 +1,12 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
 const Chapter = require("./models/Chapter");
-const { getBrowser } = require("./utils/browser");
 const ImageKit = require("imagekit");
 const fs = require("fs");
 const path = require("path");
 const sharp = require("sharp");
+const { zencf: cf } = require('zencf');
+const cookieManager = require('./utils/cookie-manager');
 
 class MangaScraperCheerio {
   constructor() {
@@ -21,18 +22,6 @@ class MangaScraperCheerio {
     }
   }
 
-  // Helper to extract cookies from Puppeteer page context as a string
-  async _getCookieStringFromBrowser(page) {
-    const cookies = await page.cookies();
-    const parts = [];
-    for (const cookie of cookies) {
-      // Only include cookies for comix.to domain (or relevant domains)
-      if (cookie.domain.includes("comix.to") || cookie.domain === ".comix.to") {
-        parts.push(`${cookie.name}=${cookie.value}`);
-      }
-    }
-    return parts.join("; ");
-  }
 
   // Helper to extract image data from raw HTML using regex
   _extractImagesFromHtml(html) {
@@ -110,63 +99,47 @@ class MangaScraperCheerio {
         provider: "Unknown",
       };
 
-      let page = null;
-      let cookieStr = "";
-
+      // Try Axios with cookies first (from manager)
       try {
-        console.log("    launching Puppeteer with Cloudflare clearance...");
-        const browser = await getBrowser();
-        page = await browser.newPage();
-        await page.setUserAgent(this.userAgent);
-
-        // Navigate to the chapter page - CloudflareClearancePlugin will auto-solve challenge
-        await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
-        await new Promise((r) => setTimeout(r, 2000)); // Wait for hydration
-
-        html = await page.content();
-
-        // Extract cookies from the browser to use in Axios requests
-        cookieStr = await this._getCookieStringFromBrowser(page);
-        console.log(`      Obtained ${cookieStr.split(';').filter(c => c).length} cookies`);
-
-        // Try to extract images from HTML
+        console.log("    Trying Axios with cookies first...");
+        const cookieStr = await cookieManager.getCookieString();
+        const response = await axios.get(url, {
+          headers: {
+            "User-Agent": this.userAgent,
+            Cookie: cookieStr,
+            Referer: "https://comix.to/",
+          },
+          timeout: 15000,
+        });
+        html = response.data;
         const extracted = this._extractImagesFromHtml(html);
         if (extracted.images.length > 0) {
-          console.log(
-            `   ✅ [Puppeteer] Extracted ${extracted.images.length} images`,
-          );
+          console.log(`   ✅ [Axios] Extracted ${extracted.images.length} images`);
           images = extracted.images;
           metadata = { ...metadata, ...extracted.metadata };
+        } else {
+          console.log("   ⚠️ [Axios] No images extracted");
         }
       } catch (e) {
-        console.log(`   ⚠️ [Puppeteer] Error: ${e.message}`);
-        if (page) await page.close();
-        page = null;
+        console.log(`   ⚠️ [Axios] Error: ${e.message}`);
       }
 
-      // --- LAYER 2: Axios + Cookies obtained from Puppeteer (if Puppeteer succeeded but we need to refetch or fallback) ---
-      if (images.length === 0 && cookieStr) {
+      // Fallback: if no images, try zencf.source for rendered HTML
+      if (images.length === 0) {
         try {
-          console.log("   尝试 Layer 2 (Axios + Auto-Obtained Cookies)...");
-          const response = await axios.get(url, {
-            headers: {
-              "User-Agent": this.userAgent,
-              Cookie: cookieStr,
-              Referer: "https://comix.to/",
-            },
-            timeout: 15000,
-          });
-          html = response.data;
+          console.log("    Trying fallback with zencf.source...");
+          const sourceResult = await cf.source(url);
+          html = sourceResult.source;
           const extracted = this._extractImagesFromHtml(html);
           if (extracted.images.length > 0) {
-            console.log(
-              `   ✅ [Axios] Extracted ${extracted.images.length} images using auto-obtained cookies`,
-            );
+            console.log(`   ✅ [zencf] Extracted ${extracted.images.length} images`);
             images = extracted.images;
             metadata = { ...metadata, ...extracted.metadata };
+          } else {
+            console.log("   ⚠️ [zencf] No images extracted");
           }
         } catch (e) {
-          console.log(`   ⚠️ [Axios] Failed: ${e.message}`);
+          console.log(`   ⚠️ [zencf] Error: ${e.message}`);
         }
       }
 

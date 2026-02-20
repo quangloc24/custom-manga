@@ -10,6 +10,7 @@ const DataManager = require("./utils/data-manager");
 
 const AutoUpdater = require("./utils/auto-updater");
 const dns = require("dns");
+const cookieManager = require('./utils/cookie-manager');
 dns.setDefaultResultOrder("ipv4first");
 dns.setServers(["1.1.1.1"]);
 const app = express();
@@ -19,8 +20,13 @@ const PORT = process.env.PORT || 3000;
 // Connect to MongoDB
 mongoose
   .connect(process.env.MONGODB_URI)
-  .then(() => console.log("✅ Connected to MongoDB"))
-  .catch((err) => console.error("❌ MongoDB connection error:", err));
+  .then(() => {
+    console.log("✅ Connected to MongoDB");
+    return cookieManager.initialize();
+  })
+  .catch((err) => {
+    console.error("❌ Error connecting to MongoDB or initializing cookies:", err);
+  });
 
 // Initialize scrapers and managers
 const scraper = new MangaScraper();

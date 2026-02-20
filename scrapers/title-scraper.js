@@ -1,6 +1,7 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
-const { zencf } = require('zencf')
+const { zencf } = require('zencf');
+const cookieManager = require('../utils/cookie-manager');
 
 class TitleScraper {
   constructor() {
@@ -13,13 +14,12 @@ class TitleScraper {
     try {
       console.log(`Scraping manga details from: ${url}`);
 
-      // Use cfto to bypass Cloudflare and get rendered HTML and cookies for API
+      // Use zencf to bypass Cloudflare and get rendered HTML
       const sourceResult = await zencf.source(url);
       const html = sourceResult.source;
-      const session = await zencf.wafSession(url);
-      const cookieStr = session.cookies.map(c => `${c.name}=${c.value}`).join('; ');
-      console.log(`      Obtained ${session.cookies.length} cookies for API`);
-      console.log(cookieStr);
+      // Get cookies from persistent manager (auto-refreshes if expired)
+      const cookieStr = await cookieManager.getCookieString();
+      console.log(`      Using ${cookieStr.split(';').length} cookies from manager`);
       const $ = cheerio.load(html);
 
       // Extract manga ID from URL (full slug and short ID)
