@@ -14,12 +14,43 @@ class TitleScraper {
     try {
       console.log(`Scraping manga details from: ${url}`);
 
-      // Use zencf to bypass Cloudflare and get rendered HTML
-      const sourceResult = await zencf.source(url);
-      const html = sourceResult.source;
-      // Get cookies from persistent manager (auto-refreshes if expired)
+      let html = "";
+
+      // Try Axios with cookies first (from manager)
+      try {
+        console.log("    Trying Axios with cookies first...");
+        const cookieStr = await cookieManager.getCookieString();
+        const response = await axios.get(url, {
+          headers: {
+            "User-Agent": this.userAgent,
+            Cookie: cookieStr,
+            Referer: "https://comix.to/",
+          },
+          timeout: 15000,
+        });
+        html = response.data;
+        console.log("   ✅ [Axios] Fetched manga details HTML");
+      } catch (e) {
+        console.log(`   ⚠️ [Axios] Error: ${e.message}`);
+      }
+
+      // Fallback: if Axios failed or returned no HTML, try zencf.source for rendered HTML
+      if (!html) {
+        try {
+          console.log("    Trying fallback with zencf.source...");
+          const sourceResult = await zencf.source(url);
+          html = sourceResult.source;
+          console.log("   ✅ [zencf] Fetched manga details HTML");
+        } catch (e) {
+          console.log(`   ⚠️ [zencf] Error: ${e.message}`);
+          throw new Error("Failed to fetch manga details (both Axios and zencf failed)");
+        }
+      }
+
+      // Get cookies from persistent manager (for API calls)
       const cookieStr = await cookieManager.getCookieString();
       console.log(`      Using ${cookieStr.split(';').length} cookies from manager`);
+
       const $ = cheerio.load(html);
 
       // Extract manga ID from URL (full slug and short ID)
@@ -169,7 +200,7 @@ class TitleScraper {
       }
 
       // Extract chapters using the API
-      const chapters = await this.extractChaptersViaAPI(shortId, mangaSlug);
+      const chapters = await this.extractChaptersViaAPI(shortId, mangaSlug, cookieStr);
 
       mangaData.chapters = chapters;
       mangaData.totalChapters = chapters.length;

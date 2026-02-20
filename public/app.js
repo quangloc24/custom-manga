@@ -257,12 +257,25 @@ function displayChapter(data) {
   errorContainer.style.display = "none";
   readerSection.style.display = "block";
 
-  // Update title
+  // Set manga title (prefer actual title from DB, else format ID)
+  const mangaId = data.metadata?.mangaId || "manga";
+  let mangaNameText = data.metadata?.mangaTitle;
+  if (!mangaNameText) {
+    // Fallback: format the ID slug
+    mangaNameText = mangaId
+      .split("-")
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ");
+  }
+  const mangaTitleEl = document.getElementById("mangaTitle");
+  if (mangaTitleEl) {
+    mangaTitleEl.textContent = mangaNameText;
+  }
+
+  // Update chapter title
   const titleText = (data.metadata.title || "Manga Chapter")
     .replace(/\(?\d{4}\)?/g, "")
     .trim();
-  const chapterText = data.metadata.chapter || "";
-  // Display ONLY the manga title, without chapter number, as requested.
   chapterTitle.textContent = titleText;
 
   // Update sticky title - REMOVED per user request
@@ -312,7 +325,7 @@ function displayChapter(data) {
   reloadBtn.style.display = "block";
 
   // Create clean, readable URL: /reader/manga-name/provider/chapter-X
-  const cleanUrl = createCleanUrl(data.metadata);
+  const cleanUrl = createCleanUrl(data);
   window.history.replaceState({ chapterUrl: urlInput.value }, "", cleanUrl);
 
   // Save to localStorage for persistence across hard refreshes
@@ -326,26 +339,31 @@ function displayChapter(data) {
   updateNavigationButtons();
 }
 
-function createCleanUrl(metadata) {
-  // Extract manga name from title (remove chapter info)
-  let mangaName = (metadata.title || "manga")
-    .replace(/chapter\s*\d+/gi, "")
-    .replace(/ch\.\s*\d+/gi, "")
-    .replace(/\(?\d{4}\)?/g, "") // Remove years like 2023 or (2023)
-    .trim()
+function createCleanUrl(chapter) {
+  // Determine manga slug: prefer human-readable title-based slug if available
+  let mangaId = chapter.mangaId || (chapter.metadata && chapter.metadata.mangaId) || "manga";
+  let mangaName = mangaId
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
+  // If we have an actual manga title, generate a nicer slug from it
+  if (chapter.metadata && chapter.metadata.mangaTitle) {
+    mangaName = chapter.metadata.mangaTitle
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
   // Extract provider/scanlation team if available
-  let provider = (metadata.provider || metadata.scanlator || "unknown")
+  let provider = (chapter.provider || chapter.metadata.provider || "unknown")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
   // Extract chapter number
-  const chapterMatch = (metadata.chapter || "").match(/\d+/);
-  const chapterNum = chapterMatch ? chapterMatch[0] : "1";
+  const chapterNumMatch = (chapter.chapterNumber || chapter.metadata.chapter || "").match(/\d+/);
+  const chapterNum = chapterNumMatch ? chapterNumMatch[0] : "1";
 
   return `/reader/${mangaName}/${provider}/chapter-${chapterNum}`;
 }

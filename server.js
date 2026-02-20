@@ -7,6 +7,7 @@ const MangaScraper = require("./scraper-cheerio"); // Using Cheerio for better c
 const HomepageScraper = require("./scrapers/homepage-scraper");
 const TitleScraper = require("./scrapers/title-scraper");
 const DataManager = require("./utils/data-manager");
+const Manga = require("./models/Manga");
 
 const AutoUpdater = require("./utils/auto-updater");
 const dns = require("dns");
@@ -128,6 +129,22 @@ app.get("/api/chapter", async (req, res) => {
       result.metadata.chapterId = chapterId;
       result.metadata.provider = provider;
       result.metadata.chapterNumber = chapterNumber;
+
+      // Fetch manga title from DB if available
+      let mangaTitle = null;
+      if (mangaId) {
+        try {
+          const mangaDoc = await Manga.findOne({ mangaId }).lean();
+          if (mangaDoc && mangaDoc.title) {
+            mangaTitle = mangaDoc.title;
+          }
+        } catch (err) {
+          console.warn("Failed to fetch manga title:", err.message);
+        }
+      }
+      if (mangaTitle) {
+        result.metadata.mangaTitle = mangaTitle;
+      }
     }
 
     res.json(result);
