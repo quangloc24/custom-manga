@@ -1,5 +1,7 @@
+const axios = require("axios");
 const cheerio = require("cheerio");
-const { getBrowser } = require("../utils/browser");
+const { zencf } = require('zencf');
+const cookieManager = require('../utils/cookie-manager');
 
 class HomepageScraper {
   constructor() {
@@ -8,21 +10,41 @@ class HomepageScraper {
   }
 
   async scrapeHomepage() {
-    let page = null;
     try {
       console.log("Scraping homepage: https://comix.to/home");
 
-      const browser = await getBrowser();
-      page = await browser.newPage();
-      await page.setUserAgent(this.userAgent);
-      await page.goto("https://comix.to/home", {
-        waitUntil: "networkidle2",
-        timeout: 60000,
-      });
-      await page.waitForTimeout(1500);
-      const html = await page.content();
-      await page.close();
-      page = null;
+      let html = "";
+
+      // Try Axios with cookies first (from manager)
+      try {
+        console.log("    Trying Axios with cookies first...");
+        const cookieStr = await cookieManager.getCookieString();
+        const response = await axios.get("https://comix.to/home", {
+          headers: {
+            "User-Agent": this.userAgent,
+            Cookie: cookieStr,
+            Referer: "https://comix.to/",
+          },
+          timeout: 15000,
+        });
+        html = response.data;
+        console.log("   ✅ [Axios] Fetched homepage HTML");
+      } catch (e) {
+        console.log(`   ⚠️ [Axios] Error: ${e.message}`);
+      }
+
+      // Fallback: if Axios failed or returned no HTML, try zencf.source for rendered HTML
+      if (!html) {
+        try {
+          console.log("    Trying fallback with zencf.source...");
+          const sourceResult = await zencf.source("https://comix.to/home");
+          html = sourceResult.source;
+          console.log("   ✅ [zencf] Fetched homepage HTML");
+        } catch (e) {
+          console.log(`   ⚠️ [zencf] Error: ${e.message}`);
+          throw new Error("Failed to fetch homepage (both Axios and zencf failed)");
+        }
+      }
 
       const $ = cheerio.load(html);
       const mangas = [];
@@ -79,11 +101,6 @@ class HomepageScraper {
       };
     } catch (error) {
       console.error("❌ Error scraping homepage:", error.message);
-      if (page) {
-        try {
-          await page.close();
-        } catch (_) {}
-      }
       return {
         success: false,
         error: error.message,

@@ -84,7 +84,9 @@ class CookieManager {
 
   async initialize() {
     try {
-      await this.getCookieString();
+      // Force refresh on startup regardless of expiration
+      console.log('🔄 Initializing CookieManager - forcing fresh cookie fetch...');
+      await this.getCookieString(true);
     } catch (error) {
       console.error('❌ CookieManager initialization failed:', error.message);
       // Do not throw; allow startup to continue and will retry on first use
