@@ -4,14 +4,11 @@
  */
 const puppeteerExtra = require("puppeteer-extra");
 const StealthPlugin = require("puppeteer-extra-plugin-stealth");
-const { execSync } = require("child_process");
 const fs = require("fs");
 
 puppeteerExtra.use(StealthPlugin());
 
 let browserInstance = null;
-let proxyAuth = null; // { username, password } if proxy requires auth
-
 // Try to find Chromium/Chrome executable on the system (Linux VPS)
 function findChromiumPath() {
   const candidates = [
@@ -62,7 +59,6 @@ async function getBrowser() {
   };
 
   // Add proxy if PROXY_URL is set
-  let proxyServer = null;
   let proxyAuth = null;
   if (process.env.PROXY_URL) {
     try {
@@ -95,25 +91,22 @@ async function getBrowser() {
   browserInstance = await puppeteerExtra.launch(launchOptions);
   console.log("[Browser] Launched stealth browser");
 
-  // If proxy requires auth, inject Proxy-Authorization header on all new pages
+  // If proxy requires auth, apply credentials on every newly-created page.
   if (proxyAuth) {
-    browserInstance = await puppeteerExtra.launch(launchOptions);
-    console.log("[Browser] Launched stealth browser");
-
-    if (proxyAuth) {
-      browserInstance.on("targetcreated", async (target) => {
-        if (target.type() === "page") {
-          const page = await target.page();
-          if (page) {
-            await page.authenticate({
-              username: proxyAuth.username,
-              password: proxyAuth.password,
-            });
-            console.log("[Browser] Proxy authentication applied to page");
-          }
-        }
-      });
-    }
+    browserInstance.on("targetcreated", async (target) => {
+      if (target.type() !== "page") return;
+      try {
+        const page = await target.page();
+        if (!page) return;
+        await page.authenticate({
+          username: proxyAuth.username,
+          password: proxyAuth.password,
+        });
+        console.log("[Browser] Proxy authentication applied to page");
+      } catch (err) {
+        console.warn("[Browser] Failed to apply proxy auth:", err.message);
+      }
+    });
   }
 
   browserInstance.on("disconnected", () => {

@@ -67,7 +67,17 @@ class CookieManager {
       await page.waitForTimeout(2000);
 
       // Extract all cookies from browser context
-      const browserCookies = await page.cookies();
+      let browserCookies = [];
+      try {
+        const client = await page.target().createCDPSession();
+        const allCookies = await client.send('Network.getAllCookies');
+        browserCookies = (allCookies.cookies || []).filter((c) => {
+          const domain = (c.domain || '').replace(/^\./, '');
+          return domain.endsWith('comix.to');
+        });
+      } catch (_) {
+        browserCookies = await page.cookies('https://comix.to/', 'https://comix.to/home');
+      }
       console.log(`   ✅ Extracted ${browserCookies.length} cookies from browser`);
 
       await page.close();
@@ -80,13 +90,13 @@ class CookieManager {
       const finalCookies = browserCookies.map(c => ({
         name: c.name,
         value: c.value,
-        expires: c.expires ? Math.floor(c.expires / 1000) : null
+        expires: (typeof c.expires === 'number' && c.expires > 0) ? Math.floor(c.expires) : null
       }));
 
       // Compute earliest expiration
       let minExpires = Infinity;
       finalCookies.forEach(c => {
-        if (c.expires && c.expires < minExpires) {
+        if (typeof c.expires === 'number' && c.expires > 0 && c.expires < minExpires) {
           minExpires = c.expires;
         }
       });
