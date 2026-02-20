@@ -190,10 +190,23 @@ class MangaScraperCheerio {
             .replace(/^-+|-+$/g, "");
 
           // Concurrent uploads by configurable batch size.
+          const defaultBatchSize =
+            this.storageProvider === "imgbb"
+              ? Number(process.env.IMGBB_UPLOAD_BATCH_SIZE || 3)
+              : Number(process.env.STORAGE_UPLOAD_BATCH_SIZE || 20);
           const BATCH_SIZE = Math.max(
             1,
-            Number(process.env.STORAGE_UPLOAD_BATCH_SIZE || 20),
+            defaultBatchSize,
           );
+          const imgbbJitterMin = Math.max(
+            0,
+            Number(process.env.IMGBB_UPLOAD_JITTER_MIN_MS || 150),
+          );
+          const imgbbJitterMax = Math.max(
+            imgbbJitterMin,
+            Number(process.env.IMGBB_UPLOAD_JITTER_MAX_MS || 500),
+          );
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
           for (let i = 0; i < images.length; i += BATCH_SIZE) {
             const batchPromises = images
@@ -202,6 +215,13 @@ class MangaScraperCheerio {
                 const index = i + batchIndex;
                 const fileName = `page-${String(index + 1).padStart(2, "0")}.webp`;
                 const folderPath = `/${mangaSlug}/${providerSlug}/${chapterSlug}/`;
+
+                if (this.storageProvider === "imgbb") {
+                  const jitter =
+                    imgbbJitterMin +
+                    Math.floor(Math.random() * (imgbbJitterMax - imgbbJitterMin + 1));
+                  await sleep(jitter);
+                }
 
                 // Upload and return new URL
                 const newUrl = await uploadToStorage(
