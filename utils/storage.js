@@ -1,5 +1,6 @@
 const { uploadToImageKit } = require("./imagekit");
 const { uploadToImgBB } = require("./imgbb");
+const { uploadToFreeImage } = require("./freeimage");
 
 function getStorageProvider() {
   const configured = (process.env.STORAGE_PROVIDER || "").trim().toLowerCase();
@@ -11,6 +12,9 @@ function getStorageProvider() {
     if (configured === "imgbb") {
       return process.env.IMGBB_API_KEY ? "imgbb" : null;
     }
+    if (configured === "freeimage") {
+      return process.env.FREEIMAGE_API_KEY ? "freeimage" : null;
+    }
 
     console.warn(`[Storage] Unsupported STORAGE_PROVIDER: ${configured}`);
     return null;
@@ -18,6 +22,7 @@ function getStorageProvider() {
 
   if (process.env.IMAGEKIT_PRIVATE_KEY) return "imagekit";
   if (process.env.IMGBB_API_KEY) return "imgbb";
+  if (process.env.FREEIMAGE_API_KEY) return "freeimage";
   return null;
 }
 
@@ -34,6 +39,10 @@ async function uploadToStorage(imageUrl, fileName, folderPath, provider) {
 
   if (selectedProvider === "imgbb") {
     return uploadToImgBB(imageUrl, fileName);
+  }
+
+  if (selectedProvider === "freeimage") {
+    return uploadToFreeImage(imageUrl);
   }
 
   return imageUrl;
