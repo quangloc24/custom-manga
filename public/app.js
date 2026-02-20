@@ -192,7 +192,7 @@ async function loadChapter() {
   await loadChapterFromUrl(url);
 }
 
-async function loadChapterFromUrl(url, metadata = {}) {
+async function loadChapterFromUrl(url, metadata = {}, options = {}) {
   showLoading();
 
   try {
@@ -204,6 +204,7 @@ async function loadChapterFromUrl(url, metadata = {}) {
     if (metadata.chapterId) params.append("chapterId", metadata.chapterId);
     if (metadata.chapterNumber)
       params.append("chapterNumber", metadata.chapterNumber);
+    if (options.force === true) params.append("force", "1");
 
     const response = await fetch(`/api/chapter?${params.toString()}`);
     const data = await response.json();
@@ -368,7 +369,7 @@ function createCleanUrl(chapter) {
   return `/reader/${mangaName}/${provider}/chapter-${chapterNum}`;
 }
 
-function reloadCurrentChapter() {
+async function reloadCurrentChapter() {
   // Try to get URL from history state, localStorage, or input field
   const storedMetadata = localStorage.getItem("lastChapterMetadata");
   const metadata = storedMetadata ? JSON.parse(storedMetadata) : null;
@@ -378,7 +379,20 @@ function reloadCurrentChapter() {
   const chapterUrl = storedUrl || urlInput.value;
 
   if (chapterUrl) {
-    loadChapterFromUrl(chapterUrl, metadata);
+    try {
+      reloadBtn.disabled = true;
+      await fetch("/api/sync/chapter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: chapterUrl, force: true }),
+      });
+    } catch (error) {
+      console.error("Reload sync error:", error);
+    } finally {
+      reloadBtn.disabled = false;
+    }
+
+    await loadChapterFromUrl(chapterUrl, metadata, { force: true });
   } else {
     alert("No chapter URL found. Please enter a chapter URL.");
     showInputSection();
@@ -656,10 +670,19 @@ window.addEventListener("load", () => {
     urlInput.value = chapterUrl;
     loadChapterFromUrl(chapterUrl, metadata);
   } else if (window.location.pathname.startsWith("/reader/")) {
-    console.log("Detected /reader/ path, calling reloadCurrentChapter()");
-    // User refreshed on a /reader/ URL - reload the current chapter
-    // This uses the same logic as the reload button
-    reloadCurrentChapter();
+    console.log("Detected /reader/ path, loading last chapter without sync");
+    const storedMetadata = localStorage.getItem("lastChapterMetadata");
+    const metadata = storedMetadata ? JSON.parse(storedMetadata) : null;
+    const storedUrl =
+      window.history.state?.chapterUrl || localStorage.getItem("lastChapterUrl");
+    const fallbackUrl = storedUrl || urlInput.value;
+
+    if (fallbackUrl) {
+      urlInput.value = fallbackUrl;
+      loadChapterFromUrl(fallbackUrl, metadata);
+    } else {
+      showInputSection();
+    }
   } else {
     console.log("No special path, focusing input");
     // Just focus the input

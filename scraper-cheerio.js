@@ -1,26 +1,16 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
 const Chapter = require("./models/Chapter");
-const ImageKit = require("imagekit");
-const fs = require("fs");
-const path = require("path");
-const sharp = require("sharp");
 const { zencf: cf } = require('zencf');
 const cookieManager = require('./utils/cookie-manager');
 const { getAxiosProxyConfig, buildComixHeaders } = require('./utils/comix-request');
+const { getStorageProvider, uploadToStorage } = require("./utils/storage");
 
 class MangaScraperCheerio {
   constructor() {
     this.userAgent =
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-
-    if (process.env.IMAGEKIT_PRIVATE_KEY) {
-      this.imagekit = new ImageKit({
-        publicKey: process.env.IMAGEKIT_PUBLIC_KEY,
-        privateKey: process.env.IMAGEKIT_PRIVATE_KEY,
-        urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT,
-      });
-    }
+    this.storageProvider = getStorageProvider();
   }
 
 
@@ -62,10 +52,11 @@ class MangaScraperCheerio {
     return { images, metadata };
   }
 
-  async scrapeChapter(url) {
+  async scrapeChapter(url, options = {}) {
     try {
+      const forceRefresh = options.forceRefresh === true;
       // 1. Check Cache
-      if (process.env.IMAGEKIT_PRIVATE_KEY) {
+      if (this.storageProvider && !forceRefresh) {
         const cachedChapter = await Chapter.findOne({ chapterId: url });
         if (cachedChapter && cachedChapter.images?.length > 0) {
           console.log(
@@ -179,10 +170,10 @@ class MangaScraperCheerio {
           ? nextLink.attr("href")
           : `https://comix.to${nextLink.attr("href")}`;
 
-      // --- 5. Upload to ImageKit ---
-      if (process.env.IMAGEKIT_PRIVATE_KEY && images.length > 0) {
+      // --- 5. Upload to configured storage provider ---
+      if (this.storageProvider && images.length > 0) {
         try {
-          console.log("   ☁️ Uploading images to ImageKit...");
+          console.log(`Uploading images to ${this.storageProvider}...`);
           const uploadedUrls = [];
 
           // Extract manga info for folder path
@@ -198,9 +189,11 @@ class MangaScraperCheerio {
             .replace(/[^a-z0-9]+/g, "-")
             .replace(/^-+|-+$/g, "");
 
-          // Concurrent Uploads (Batch by 30)
-          const BATCH_SIZE = 30;
-          const { uploadToImageKit } = require("./utils/imagekit");
+          // Concurrent uploads by configurable batch size.
+          const BATCH_SIZE = Math.max(
+            1,
+            Number(process.env.STORAGE_UPLOAD_BATCH_SIZE || 20),
+          );
 
           for (let i = 0; i < images.length; i += BATCH_SIZE) {
             const batchPromises = images
@@ -211,10 +204,11 @@ class MangaScraperCheerio {
                 const folderPath = `/${mangaSlug}/${providerSlug}/${chapterSlug}/`;
 
                 // Upload and return new URL
-                const newUrl = await uploadToImageKit(
+                const newUrl = await uploadToStorage(
                   img.url,
                   fileName,
                   folderPath,
+                  this.storageProvider,
                 );
 
                 // Update in place immediately
@@ -232,24 +226,28 @@ class MangaScraperCheerio {
             );
           }
 
-          // Save to DB
-          const newChapter = new Chapter({
-            mangaId: mangaSlug,
-            chapterId: url,
-            chapterNumber: metadata.chapter,
-            provider: metadata.provider,
-            images: uploadedUrls,
-            metadata: {
-              title: metadata.title,
-              chapter: metadata.chapter,
-              prevChapter: metadata.prevChapter,
-              nextChapter: metadata.nextChapter,
+          // Save/overwrite chapter cache in DB
+          await Chapter.findOneAndUpdate(
+            { chapterId: url },
+            {
+              mangaId: mangaSlug,
+              chapterId: url,
+              chapterNumber: metadata.chapter,
+              provider: metadata.provider,
+              images: uploadedUrls,
+              metadata: {
+                title: metadata.title,
+                chapter: metadata.chapter,
+                prevChapter: metadata.prevChapter,
+                nextChapter: metadata.nextChapter,
+              },
+              createdAt: new Date(),
             },
-          });
-          await newChapter.save();
-          console.log("   ✅ Saved to DB with ImageKit URLs");
+            { upsert: true, new: true, setDefaultsOnInsert: true },
+          );
+          console.log(`Saved to DB with ${this.storageProvider} URLs`);
         } catch (e) {
-          console.log("   ⚠️ ImageKit upload/save failed:", e.message);
+          console.log(`${this.storageProvider} upload/save failed:`, e.message);
         }
       }
 

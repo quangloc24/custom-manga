@@ -59,6 +59,7 @@ app.get("/api/chapter", async (req, res) => {
       mangaId: qMangaId,
       provider: qProvider,
       chapterId: qChapterId,
+      force: qForce,
     } = req.query;
 
     if (!url) {
@@ -69,7 +70,8 @@ app.get("/api/chapter", async (req, res) => {
     }
 
     console.log("Fetching chapter:", url);
-    const result = await scraper.scrapeChapter(url);
+    const forceRefresh = qForce === "1" || qForce === "true";
+    const result = await scraper.scrapeChapter(url, { forceRefresh });
 
     if (result.success && result.metadata) {
       // Try to extract mangaId and chapterId from URL if not provided
@@ -324,7 +326,7 @@ app.post("/api/scrape/manga/:id", async (req, res) => {
 app.post("/api/sync/chapter", async (req, res) => {
   try {
     // We only need the URL because the scraper handles everything else (metadata, uploading, saving)
-    const { url } = req.body;
+    const { url, force } = req.body;
 
     if (!url) {
       return res.status(400).json({
@@ -334,7 +336,8 @@ app.post("/api/sync/chapter", async (req, res) => {
     }
 
     console.log(`☁️ Syncing chapter to cloud: ${url}`);
-    const result = await scraper.scrapeChapter(url);
+    const forceRefresh = force === true || force === "true" || force === 1 || force === "1";
+    const result = await scraper.scrapeChapter(url, { forceRefresh });
 
     if (result.success) {
       res.json({
