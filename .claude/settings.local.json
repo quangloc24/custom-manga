@@ -3,7 +3,8 @@
     "allow": [
       "Bash(npm install:*)",
       "Bash(findstr:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "WebFetch(domain:www.npmjs.com)"
     ]
   }
 }

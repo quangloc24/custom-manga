@@ -1,5 +1,7 @@
-const { zencf: cf } = require('zencf');
+const { getBrowser } = require('./browser');
 const CloudflareCookie = require('../models/CloudflareCookie');
+
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 class CookieManager {
   constructor() {
@@ -42,24 +44,57 @@ class CookieManager {
   }
 
   async _refreshCookies() {
-    console.log('🔄 Refreshing Cloudflare cookies...');
-    try {
-      const session = await cf.wafSession('https://comix.to');
-      const cookies = session.cookies;
+    console.log('🔄 Refreshing Cloudflare cookies using browser...');
 
-      // Compute earliest expiration among cookies
+    let browser = null;
+    try {
+      // Get shared browser instance (reusable, properly configured)
+      browser = await getBrowser();
+      const page = await browser.newPage();
+
+      // Set realistic viewport and user agent
+      await page.setViewport({ width: 1920, height: 1080 });
+      await page.setUserAgent(USER_AGENT);
+
+      // Navigate to homepage and wait for full load
+      console.log('   Navigating to https://comix.to/ ...');
+      await page.goto('https://comix.to/', {
+        waitUntil: 'networkidle2',
+        timeout: 30000
+      });
+
+      // Extra wait for any delayed JS
+      await page.waitForTimeout(2000);
+
+      // Extract all cookies from browser context
+      const browserCookies = await page.cookies();
+      console.log(`   ✅ Extracted ${browserCookies.length} cookies from browser`);
+
+      await page.close();
+
+      if (browserCookies.length === 0) {
+        throw new Error('No cookies extracted from browser');
+      }
+
+      // Map to our format with expiration
+      const finalCookies = browserCookies.map(c => ({
+        name: c.name,
+        value: c.value,
+        expires: c.expires ? Math.floor(c.expires / 1000) : null
+      }));
+
+      // Compute earliest expiration
       let minExpires = Infinity;
-      cookies.forEach(c => {
+      finalCookies.forEach(c => {
         if (c.expires && c.expires < minExpires) {
           minExpires = c.expires;
         }
       });
-
       const expiresAt = minExpires !== Infinity ? new Date(minExpires * 1000) : null;
-      const cookieString = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+      const finalCookieString = finalCookies.map(c => `${c.name}=${c.value}`).join('; ');
 
-      // Update in-memory cache
-      this.cookieString = cookieString;
+      // Update memory
+      this.cookieString = finalCookieString;
       this.expiresAt = expiresAt;
 
       // Save to DB
@@ -67,18 +102,22 @@ class CookieManager {
         { _id: 'comix' },
         {
           _id: 'comix',
-          cookies,
-          cookieString,
+          cookies: finalCookies,
+          cookieString: finalCookieString,
           expiresAt,
           updatedAt: new Date()
         },
         { upsert: true, new: true }
       );
 
-      console.log(`✅ Refreshed cookies, expire at ${expiresAt}`);
+      console.log(`✅ Refreshed cookies (${finalCookies.length} total)${expiresAt ? ', expire at ' + expiresAt : ''}`);
+
     } catch (error) {
       console.error('❌ Failed to refresh cookies:', error.message);
       throw error;
+    } finally {
+      // Don't close the shared browser - let other scrapers use it
+      // if (browser) await browser.close();
     }
   }
 
