@@ -24,7 +24,6 @@
     "https-proxy-agent": "^7.0.6",
     "imagekit": "^6.0.0",
     "mongoose": "^9.1.5",
-    "node-catbox": "^3.4.0",
     "node-cron": "^4.2.1",
     "puppeteer": "^21.6.1",
     "puppeteer-extra": "^3.3.6",
