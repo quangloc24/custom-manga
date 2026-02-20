@@ -422,6 +422,11 @@ body {
     padding: 0 5px; /* Minimal side padding */
   }
 
+  .bottom-controls {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
   /* Reset orders */
   #backToMangaBtn, #backToMangaBtnBottom,
   #prevChapterBtn, #prevChapterBtnBottom,
