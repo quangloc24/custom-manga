@@ -1,6 +1,6 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
-const { getBrowser } = require("../utils/browser");
+const { zencf } = require('zencf')
 
 class TitleScraper {
   constructor() {
@@ -8,32 +8,18 @@ class TitleScraper {
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
   }
 
-  // Helper to extract cookies from Puppeteer page context as a string
-  async _getCookieStringFromBrowser(page) {
-    const cookies = await page.cookies();
-    const parts = [];
-    for (const cookie of cookies) {
-      // Only include cookies for comix.to domain (or relevant domains)
-      if (cookie.domain.includes("comix.to") || cookie.domain === ".comix.to") {
-        parts.push(`${cookie.name}=${cookie.value}`);
-      }
-    }
-    return parts.join("; ");
-  }
 
   async scrapeMangaDetails(url) {
     try {
       console.log(`Scraping manga details from: ${url}`);
 
-      // Use puppeteer-stealth to bypass Cloudflare on the HTML page
-      const browser = await getBrowser();
-      const page = await browser.newPage();
-      await page.setUserAgent(this.userAgent);
-      await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
-      await page.waitForTimeout(1500);
-      const html = await page.content();
-      const cookieStr = await this._getCookieStringFromBrowser(page);
-      await page.close();
+      // Use cfto to bypass Cloudflare and get rendered HTML and cookies for API
+      const sourceResult = await zencf.source(url);
+      const html = sourceResult.source;
+      const session = await zencf.wafSession(url);
+      const cookieStr = session.cookies.map(c => `${c.name}=${c.value}`).join('; ');
+      console.log(`      Obtained ${session.cookies.length} cookies for API`);
+      console.log(cookieStr);
       const $ = cheerio.load(html);
 
       // Extract manga ID from URL (full slug and short ID)
