@@ -174,7 +174,8 @@ class MangaScraperCheerio {
       if (this.storageProvider && images.length > 0) {
         try {
           console.log(`Uploading images to ${this.storageProvider}...`);
-          const uploadedUrls = [];
+          const uploadedUrls = new Array(images.length);
+          const failedUploads = [];
 
           // Extract manga info for folder path
           let mangaSlug = "unknown-manga";
@@ -206,6 +207,10 @@ class MangaScraperCheerio {
             imgbbJitterMin,
             Number(process.env.IMGBB_UPLOAD_JITTER_MAX_MS || 500),
           );
+          const retryDelayMs = Math.max(
+            0,
+            Number(process.env.IMGBB_RETRY_DELAY_MS || 3000),
+          );
           const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
           for (let i = 0; i < images.length; i += BATCH_SIZE) {
@@ -215,6 +220,7 @@ class MangaScraperCheerio {
                 const index = i + batchIndex;
                 const fileName = `page-${String(index + 1).padStart(2, "0")}.webp`;
                 const folderPath = `/${mangaSlug}/${providerSlug}/${chapterSlug}/`;
+                const sourceUrl = img.url;
 
                 if (this.storageProvider === "imgbb") {
                   const jitter =
@@ -225,7 +231,7 @@ class MangaScraperCheerio {
 
                 // Upload and return new URL
                 const newUrl = await uploadToStorage(
-                  img.url,
+                  sourceUrl,
                   fileName,
                   folderPath,
                   this.storageProvider,
@@ -233,17 +239,46 @@ class MangaScraperCheerio {
 
                 // Update in place immediately
                 img.url = newUrl;
+                uploadedUrls[index] = newUrl;
+                if (this.storageProvider === "imgbb" && newUrl === sourceUrl) {
+                  failedUploads.push({ index, fileName, folderPath, sourceUrl });
+                }
                 return newUrl;
               });
 
-            const batchUrls = await Promise.all(batchPromises);
-            uploadedUrls.push(...batchUrls);
+            await Promise.all(batchPromises);
 
             console.log(
               `   ☁️ Uploaded batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(
                 images.length / BATCH_SIZE,
               )}`,
             );
+          }
+
+          if (this.storageProvider === "imgbb" && failedUploads.length > 0) {
+            console.log(
+              `[ImgBB] ${failedUploads.length} page(s) failed, retrying after ${retryDelayMs}ms...`,
+            );
+            await sleep(retryDelayMs);
+
+            for (const failed of failedUploads) {
+              const retryJitter =
+                imgbbJitterMin +
+                Math.floor(Math.random() * (imgbbJitterMax - imgbbJitterMin + 1));
+              await sleep(retryJitter);
+
+              const retriedUrl = await uploadToStorage(
+                failed.sourceUrl,
+                failed.fileName,
+                failed.folderPath,
+                this.storageProvider,
+              );
+
+              if (retriedUrl !== failed.sourceUrl) {
+                images[failed.index].url = retriedUrl;
+                uploadedUrls[failed.index] = retriedUrl;
+              }
+            }
           }
 
           // Save/overwrite chapter cache in DB

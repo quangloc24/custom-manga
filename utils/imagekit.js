@@ -1,6 +1,5 @@
 const ImageKit = require("imagekit");
 const axios = require("axios");
-const { getAxiosProxyConfig } = require("./comix-request");
 
 // Initialize ImageKit
 // Credentials should be in .env
@@ -27,7 +26,6 @@ async function uploadToImageKit(imageUrl, fileName, folderPath) {
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
         Referer: "https://comix.to/",
       },
-      ...getAxiosProxyConfig(),
       timeout: 30000,
       maxBodyLength: Infinity,
     });

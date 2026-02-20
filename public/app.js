@@ -392,7 +392,9 @@ async function reloadCurrentChapter() {
       reloadBtn.disabled = false;
     }
 
-    await loadChapterFromUrl(chapterUrl, metadata, { force: true });
+    // After sync, load normally so we read the freshly-updated DB cache
+    // instead of forcing a second rescrape/reupload pass.
+    await loadChapterFromUrl(chapterUrl, metadata);
   } else {
     alert("No chapter URL found. Please enter a chapter URL.");
     showInputSection();

@@ -1,6 +1,15 @@
 const axios = require("axios");
 const crypto = require("crypto");
-const { getAxiosProxyConfig } = require("./comix-request");
+
+function generateRandomId(length = 9) {
+  const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let id = "";
+  for (let i = 0; i < length; i++) {
+    const idx = crypto.randomInt(0, chars.length);
+    id += chars[idx];
+  }
+  return id;
+}
 
 async function downloadImageBuffer(imageUrl) {
   const response = await axios.get(imageUrl, {
@@ -10,7 +19,6 @@ async function downloadImageBuffer(imageUrl) {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
       Referer: "https://comix.to/",
     },
-    ...getAxiosProxyConfig(),
     timeout: 30000,
     maxBodyLength: Infinity,
   });
@@ -32,8 +40,7 @@ async function uploadToImgBB(imageUrl, fileName) {
     const baseName = (fileName || "image").replace(/\.[^/.]+$/, "");
     const useUniqueName =
       (process.env.IMGBB_USE_UNIQUE_NAME || "true").toLowerCase() !== "false";
-    const uniqueSuffix = `${Date.now()}-${crypto.randomBytes(3).toString("hex")}`;
-    const uploadName = useUniqueName ? `${baseName}-${uniqueSuffix}` : baseName;
+    const uploadName = useUniqueName ? generateRandomId(9) : baseName;
     payload.append("name", uploadName);
 
     // Optional auto-delete (seconds): 60 to 15552000
@@ -49,7 +56,6 @@ async function uploadToImgBB(imageUrl, fileName) {
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
         },
-        ...getAxiosProxyConfig(),
         timeout: 45000,
         maxBodyLength: Infinity,
       },
