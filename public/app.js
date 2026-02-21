@@ -1,10 +1,34 @@
 // State management
 console.log("🚀 app.js loaded!");
 let currentChapterData = null;
+let resumePageIndex = null;
+let lazyImageObserver = null;
+let progressSyncTimer = null;
+let lastSyncedPageIndex = -1;
+let isReaderScrollTrackingBound = false;
 
 // Helper function to mark chapter as read
-async function markChapterAsRead(mangaId, chapterId, chapterNumber, provider) {
+async function markChapterAsRead(
+  mangaId,
+  chapterId,
+  chapterNumber,
+  provider,
+  progress = {},
+) {
   try {
+    const pageIndex =
+      Number.isInteger(progress.pageIndex) && progress.pageIndex >= 0
+        ? progress.pageIndex
+        : null;
+    const totalPages =
+      Number.isInteger(progress.totalPages) && progress.totalPages > 0
+        ? progress.totalPages
+        : null;
+    const chapterUrl =
+      typeof progress.chapterUrl === "string" && progress.chapterUrl.trim()
+        ? progress.chapterUrl.trim()
+        : null;
+
     const storageKey = `readChapters_${mangaId}`;
     let readChapters = {};
 
@@ -18,6 +42,9 @@ async function markChapterAsRead(mangaId, chapterId, chapterNumber, provider) {
       read: true,
       chapterNumber: chapterNumber || "?",
       provider: provider || "Unknown",
+      pageIndex,
+      totalPages,
+      chapterUrl,
       timestamp: Date.now(),
     };
 
@@ -35,6 +62,9 @@ async function markChapterAsRead(mangaId, chapterId, chapterNumber, provider) {
           chapterId,
           chapterNumber,
           provider,
+          pageIndex,
+          totalPages,
+          chapterUrl,
         };
 
         console.log("[DB Sync] Attempting to sync chapter:", payload);
@@ -75,6 +105,127 @@ async function markChapterAsRead(mangaId, chapterId, chapterNumber, provider) {
   } catch (e) {
     console.error("Error marking chapter as read:", e);
   }
+}
+
+function getVisiblePageIndex() {
+  const wrappers = Array.from(
+    imagesContainer.querySelectorAll(".manga-image-wrapper"),
+  );
+  if (wrappers.length === 0) return 0;
+
+  const viewportProbe = window.scrollY + window.innerHeight * 0.35;
+  let bestIndex = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  wrappers.forEach((wrapper, index) => {
+    const top = wrapper.offsetTop;
+    const center = top + wrapper.offsetHeight / 2;
+    const distance = Math.abs(center - viewportProbe);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = index;
+    }
+  });
+
+  return bestIndex;
+}
+
+function setupLazyImageObserver() {
+  if (lazyImageObserver) {
+    lazyImageObserver.disconnect();
+    lazyImageObserver = null;
+  }
+
+  lazyImageObserver = new IntersectionObserver(
+    (entries, observer) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        const img = entry.target;
+        const src = img.dataset.src;
+        if (src && !img.src) {
+          img.src = src;
+        }
+        observer.unobserve(img);
+      });
+    },
+    { root: null, rootMargin: "900px 0px", threshold: 0.01 },
+  );
+}
+
+function bindReaderScrollTracking() {
+  if (isReaderScrollTrackingBound) return;
+
+  const onProgressEvent = () => {
+    if (!currentChapterData || readerSection.style.display === "none") return;
+    scheduleReadingProgressSync(false);
+  };
+
+  window.addEventListener("scroll", onProgressEvent, { passive: true });
+  window.addEventListener("beforeunload", () => {
+    void scheduleReadingProgressSync(true);
+  });
+  window.addEventListener("pagehide", () => {
+    void scheduleReadingProgressSync(true);
+  });
+  isReaderScrollTrackingBound = true;
+}
+
+async function scheduleReadingProgressSync(force = false) {
+  const meta = currentChapterData?.metadata;
+  if (!meta?.mangaId || !meta?.chapterId) return;
+
+  const nextPageIndex = getVisiblePageIndex();
+  const totalPages = currentChapterData?.images?.length || 0;
+
+  if (!force && nextPageIndex === lastSyncedPageIndex) return;
+
+  if (!force) {
+    if (progressSyncTimer) return;
+    progressSyncTimer = window.setTimeout(async () => {
+      progressSyncTimer = null;
+      await scheduleReadingProgressSync(true);
+    }, 1200);
+    return;
+  }
+
+  if (progressSyncTimer) {
+    window.clearTimeout(progressSyncTimer);
+    progressSyncTimer = null;
+  }
+
+  lastSyncedPageIndex = nextPageIndex;
+  const chapterUrl =
+    urlInput.value.trim() ||
+    window.history.state?.chapterUrl ||
+    localStorage.getItem("lastChapterUrl") ||
+    "";
+
+  await markChapterAsRead(
+    meta.mangaId,
+    meta.chapterId,
+    meta.chapterNumber,
+    meta.provider,
+    {
+      pageIndex: nextPageIndex,
+      totalPages,
+      chapterUrl,
+    },
+  );
+}
+
+function scrollToSavedPageIfNeeded() {
+  const wrappers = imagesContainer.querySelectorAll(".manga-image-wrapper");
+  if (!wrappers.length) return;
+
+  if (Number.isInteger(resumePageIndex) && resumePageIndex >= 0) {
+    const clamped = Math.min(resumePageIndex, wrappers.length - 1);
+    wrappers[clamped].scrollIntoView({ block: "start", behavior: "auto" });
+    lastSyncedPageIndex = clamped;
+  } else {
+    scrollToTop();
+  }
+
+  resumePageIndex = null;
 }
 
 // DOM Elements
@@ -194,6 +345,10 @@ async function loadChapter() {
 
 async function loadChapterFromUrl(url, metadata = {}, options = {}) {
   showLoading();
+  lastSyncedPageIndex = -1;
+  resumePageIndex = Number.isInteger(options.resumePageIndex)
+    ? options.resumePageIndex
+    : null;
 
   try {
     // Construct query with metadata if available
@@ -232,19 +387,11 @@ async function loadChapterFromUrl(url, metadata = {}, options = {}) {
         "lastChapterMetadata",
         JSON.stringify(metadataToSave),
       );
-
-      // Mark chapter as read
-      if (data.metadata.mangaId && data.metadata.chapterId) {
-        markChapterAsRead(
-          data.metadata.mangaId,
-          data.metadata.chapterId,
-          data.metadata.chapterNumber,
-          data.metadata.provider,
-        );
-      }
     }
 
     displayChapter(data);
+    bindReaderScrollTracking();
+    void scheduleReadingProgressSync(true);
   } catch (error) {
     console.error("Error loading chapter:", error);
     showError(error.message);
@@ -288,18 +435,26 @@ function displayChapter(data) {
 
   // Clear previous images
   imagesContainer.innerHTML = "";
+  setupLazyImageObserver();
 
   // Display images
   data.images.forEach((img, index) => {
     const wrapper = document.createElement("div");
     wrapper.className = "manga-image-wrapper";
+    wrapper.dataset.pageIndex = String(index);
 
     const imgElement = document.createElement("img");
     imgElement.className = "manga-image";
     imgElement.alt = img.alt || `Page ${index + 1}`;
+    imgElement.loading = "lazy";
 
-    // Load images directly in browser - browser has cf_clearance cookie, server does not
-    imgElement.src = img.url;
+    // Defer actual network load until reader scroll approaches this image.
+    imgElement.dataset.src = img.url;
+    if (index < 2) {
+      imgElement.src = img.url;
+    } else {
+      lazyImageObserver.observe(imgElement);
+    }
 
     // Add loading indicator
     const loadingDiv = document.createElement("div");
@@ -333,8 +488,8 @@ function displayChapter(data) {
   localStorage.setItem("lastChapterUrl", urlInput.value);
   localStorage.setItem("lastChapterPath", cleanUrl);
 
-  // Scroll to top
-  scrollToTop();
+  // Restore saved reading panel when available.
+  scrollToSavedPageIfNeeded();
 
   // Update navigation buttons
   updateNavigationButtons();
@@ -522,8 +677,9 @@ async function updateNavigationButtons() {
   };
 }
 
-function loadChapterFromNavigation(url) {
+async function loadChapterFromNavigation(url) {
   if (!currentChapterData?.metadata) return;
+  await scheduleReadingProgressSync(true);
 
   // Find the chapter object from stored navigation or create basic params
   const { mangaId } = currentChapterData.metadata;
@@ -561,8 +717,9 @@ function disableAllNavButtons() {
   }
 }
 
-function loadPreviousChapter() {
+async function loadPreviousChapter() {
   if (!currentChapterData?.navigation) return;
+  await scheduleReadingProgressSync(true);
 
   const { chapters, currentIndex } = currentChapterData.navigation;
   if (currentIndex > 0) {
@@ -578,8 +735,9 @@ function loadPreviousChapter() {
   }
 }
 
-function loadNextChapter() {
+async function loadNextChapter() {
   if (!currentChapterData?.navigation) return;
+  await scheduleReadingProgressSync(true);
 
   const { chapters, currentIndex } = currentChapterData.navigation;
   if (currentIndex >= 0 && currentIndex < chapters.length - 1) {
@@ -657,6 +815,12 @@ window.addEventListener("load", () => {
   // Check if URL parameter is provided
   const urlParams = new URLSearchParams(window.location.search);
   const chapterUrl = urlParams.get("url");
+  const pageParam = urlParams.get("page");
+  const requestedPage = pageParam ? parseInt(pageParam, 10) : NaN;
+  const resumeIndexFromQuery =
+    Number.isInteger(requestedPage) && requestedPage > 0
+      ? requestedPage - 1
+      : null;
 
   if (chapterUrl) {
     console.log("Loading from URL parameter:", chapterUrl);
@@ -670,7 +834,9 @@ window.addEventListener("load", () => {
 
     // Auto-load the chapter with metadata
     urlInput.value = chapterUrl;
-    loadChapterFromUrl(chapterUrl, metadata);
+    loadChapterFromUrl(chapterUrl, metadata, {
+      resumePageIndex: resumeIndexFromQuery,
+    });
   } else if (window.location.pathname.startsWith("/reader/")) {
     console.log("Detected /reader/ path, loading last chapter without sync");
     const storedMetadata = localStorage.getItem("lastChapterMetadata");

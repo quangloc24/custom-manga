@@ -214,6 +214,9 @@ class UserManager {
     chapterId,
     chapterNumber,
     provider,
+    pageIndex = null,
+    totalPages = null,
+    chapterUrl = null,
   ) {
     try {
       const user = await User.findOne({ username });
@@ -227,10 +230,25 @@ class UserManager {
         user.readChapters[mangaId] = {};
       }
 
+      const existingEntry = user.readChapters[mangaId][chapterId] || {};
+
       // Store chapter read data
       user.readChapters[mangaId][chapterId] = {
+        ...existingEntry,
         chapterNumber: chapterNumber || "?",
         provider: provider || "Unknown",
+        pageIndex:
+          Number.isInteger(pageIndex) && pageIndex >= 0
+            ? pageIndex
+            : existingEntry.pageIndex,
+        totalPages:
+          Number.isInteger(totalPages) && totalPages > 0
+            ? totalPages
+            : existingEntry.totalPages,
+        chapterUrl:
+          typeof chapterUrl === "string" && chapterUrl.trim()
+            ? chapterUrl.trim()
+            : existingEntry.chapterUrl,
         timestamp: new Date(),
       };
 

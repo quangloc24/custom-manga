@@ -68,7 +68,7 @@ class DataManager {
       }));
 
       await Manga.bulkWrite(operations);
-      console.log(`✅ Bulk saved/updated ${mangas.length} manga from homepage`);
+      console.log(`Bulk saved/updated ${mangas.length} manga from homepage`);
       return true;
     } catch (error) {
       console.error("Error saving library:", error.message);
@@ -116,12 +116,12 @@ class DataManager {
     }
   }
 
-  // Get manga that should be auto-updated (only those with full details scraped AND not completed)
+  // Get manga that should be auto-updated (explicitly enabled by refetch toggle)
   async getMangaForAutoUpdate() {
     try {
-      // Only return manga where user has clicked "Update Details" AND status is NOT Finished/Completed
+      // Only return manga explicitly enabled for refetch and not finished/completed.
       const mangas = await Manga.find({
-        detailsScraped: true,
+        refetchEnabled: true,
         "details.status": { $not: /^(Finished|Completed)$/i },
       }).lean();
       return mangas;
@@ -152,7 +152,6 @@ class DataManager {
         thumbnail: details.thumbnail,
         latestChapter: details.latestChapter,
         lastUpdated: new Date(),
-        detailsScraped: true, // Mark as fully scraped for auto-updates
         details: {
           description: details.synopsis || details.description || "",
           synopsis: details.synopsis || details.description || "",
@@ -174,7 +173,7 @@ class DataManager {
         new: true,
       });
 
-      console.log(`✅ Saved details for ${mangaId} to MongoDB`);
+      console.log(`Saved details for ${mangaId} to MongoDB`);
       return true;
     } catch (error) {
       console.error(`Error saving manga ${mangaId}:`, error.message);
@@ -205,3 +204,4 @@ class DataManager {
 }
 
 module.exports = DataManager;
+

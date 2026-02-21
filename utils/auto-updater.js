@@ -67,11 +67,11 @@ class AutoUpdater {
     const startTime = Date.now();
 
     try {
-      // Get only manga that have been fully scraped (user clicked "Update Details")
+      // Get only manga explicitly ticked for refetch.
       const allManga = await this.dataManager.getMangaForAutoUpdate();
 
       if (!allManga || allManga.length === 0) {
-        console.log("📚 No manga to update (no fully scraped manga found)");
+        console.log("📚 No manga to update (no manga ticked for refetch)");
         return;
       }
 
@@ -180,3 +180,4 @@ class AutoUpdater {
 }
 
 module.exports = AutoUpdater;
+

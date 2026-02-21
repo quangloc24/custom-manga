@@ -18,8 +18,8 @@ const mangaSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
-  // Flag to indicate if user has scraped full details (for auto-update filtering)
-  detailsScraped: {
+  // Controls whether this title participates in auto updater.
+  refetchEnabled: {
     type: Boolean,
     default: false,
   },
@@ -53,3 +53,4 @@ const mangaSchema = new mongoose.Schema({
 const Manga = mongoose.model("Manga", mangaSchema);
 
 module.exports = Manga;
+

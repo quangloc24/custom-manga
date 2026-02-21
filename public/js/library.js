@@ -12,6 +12,7 @@ const emptyState = document.getElementById("emptyState");
 const searchInput = document.getElementById("searchInput");
 const searchBtn = document.getElementById("searchBtn");
 const scrapeBtn = document.getElementById("scrapeBtn");
+const syncThumbsBtn = document.getElementById("syncThumbsBtn");
 const mangaCount = document.getElementById("mangaCount");
 const mangaUrlInput = document.getElementById("mangaUrlInput");
 const addMangaBtn = document.getElementById("addMangaBtn");
@@ -21,6 +22,7 @@ const addMangaBtn = document.getElementById("addMangaBtn");
 
 // Load library on page load
 window.addEventListener("load", () => {
+  loadFollowedUpdates();
   loadReadingHistory();
   loadLibrary();
 });
@@ -30,6 +32,9 @@ searchInput.addEventListener("input", handleSearch);
 searchBtn.addEventListener("click", handleSearch);
 scrapeBtn.addEventListener("click", scrapeHomepage);
 addMangaBtn.addEventListener("click", addMangaByUrl);
+if (syncThumbsBtn) {
+  syncThumbsBtn.addEventListener("click", syncAllThumbnails);
+}
 
 async function loadLibrary() {
   showLoading();
@@ -138,13 +143,14 @@ async function changePage(newPage) {
 }
 
 function createMangaCard(manga) {
+  const thumbnailSrc = buildThumbnailSrc(manga);
   const card = document.createElement("div");
   card.className = "manga-card";
   card.onclick = () => (window.location.href = `manga.html?id=${manga.id}`);
 
   card.innerHTML = `
     <div class="manga-thumbnail">
-      <img src="${manga.thumbnail}" alt="${manga.title}" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22300%22%3E%3Crect fill=%22%23333%22 width=%22200%22 height=%22300%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 fill=%22%23666%22 text-anchor=%22middle%22 dy=%22.3em%22%3ENo Image%3C/text%3E%3C/svg%3E'">
+      <img src="${thumbnailSrc}" alt="${manga.title}" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22300%22%3E%3Crect fill=%22%23333%22 width=%22200%22 height=%22300%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 fill=%22%23666%22 text-anchor=%22middle%22 dy=%22.3em%22%3ENo Image%3C/text%3E%3C/svg%3E'">
       <div class="manga-overlay">
         <span class="view-btn">View Details</span>
       </div>
@@ -156,6 +162,22 @@ function createMangaCard(manga) {
   `;
 
   return card;
+}
+
+function buildThumbnailSrc(manga) {
+  const rawUrl = (manga.thumbnail || "").trim();
+  if (!rawUrl) return rawUrl;
+
+  const lastUpdatedMs = manga.lastUpdated
+    ? new Date(manga.lastUpdated).getTime()
+    : null;
+
+  if (!lastUpdatedMs || Number.isNaN(lastUpdatedMs)) {
+    return rawUrl;
+  }
+
+  const separator = rawUrl.includes("?") ? "&" : "?";
+  return `${rawUrl}${separator}v=${lastUpdatedMs}`;
 }
 
 function handleSearch() {
@@ -254,6 +276,49 @@ async function addMangaByUrl() {
   }
 }
 
+async function syncAllThumbnails() {
+  if (
+    !confirm(
+      "Upload thumbnails for all fetched manga to the current storage provider?",
+    )
+  ) {
+    return;
+  }
+
+  if (syncThumbsBtn) {
+    syncThumbsBtn.disabled = true;
+    syncThumbsBtn.innerHTML = "<span>Syncing...</span>";
+  }
+
+  try {
+    const response = await fetch("/api/sync/thumbnails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ force: false }),
+    });
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || "Thumbnail sync failed");
+    }
+
+    toast.success(
+      `Thumbnail sync done: ${result.synced} synced, ${result.failed} failed, ${result.skipped} skipped`,
+    );
+    await loadLibrary();
+  } catch (error) {
+    console.error("Thumbnail sync error:", error);
+    toast.error(error.message || "Failed to sync thumbnails");
+  } finally {
+    if (syncThumbsBtn) {
+      syncThumbsBtn.disabled = false;
+      syncThumbsBtn.innerHTML = "<span>Sync Thumbnails</span>";
+    }
+  }
+}
+
 function showLoading() {
   loadingContainer.style.display = "block";
   mangaGrid.style.display = "none";
@@ -276,6 +341,187 @@ function hideEmptyState() {
 
 function updateMangaCount(total = 0) {
   mangaCount.textContent = total || filteredMangas.length;
+}
+
+function getDefaultCardImage() {
+  return "data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22300%22%3E%3Crect fill=%22%23333%22 width=%22200%22 height=%22300%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 fill=%22%23666%22 text-anchor=%22middle%22 dy=%22.3em%22%3ENo Image%3C/text%3E%3C/svg%3E";
+}
+
+function parseChapterNumber(value) {
+  if (value === null || value === undefined) return NaN;
+  const match = String(value).match(/(\d+(\.\d+)?)/);
+  return match ? parseFloat(match[1]) : NaN;
+}
+
+function getLatestReadInfo(readMap) {
+  if (!readMap || typeof readMap !== "object") {
+    return { number: NaN, label: "?" };
+  }
+
+  let bestByTime = null;
+  let bestTime = 0;
+  let bestByNumber = null;
+  let bestNumber = NaN;
+
+  Object.values(readMap).forEach((entry) => {
+    const parsed = parseChapterNumber(entry?.chapterNumber);
+    const tsRaw = entry?.timestamp;
+    const ts =
+      typeof tsRaw === "string"
+        ? new Date(tsRaw).getTime()
+        : Number(tsRaw) || 0;
+
+    if (ts > bestTime) {
+      bestTime = ts;
+      bestByTime = entry;
+    }
+
+    if (!Number.isNaN(parsed) && (Number.isNaN(bestNumber) || parsed > bestNumber)) {
+      bestNumber = parsed;
+      bestByNumber = entry;
+    }
+  });
+
+  const chosen = bestByTime || bestByNumber;
+  const chosenNumber = parseChapterNumber(chosen?.chapterNumber);
+  if (!chosen || Number.isNaN(chosenNumber)) {
+    return { number: NaN, label: "?" };
+  }
+
+  return {
+    number: chosenNumber,
+    label: chosen?.chapterNumber ? String(chosen.chapterNumber) : String(chosenNumber),
+  };
+}
+
+function formatTimeAgo(dateValue) {
+  if (!dateValue) return "";
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return "";
+  const diffMs = Date.now() - date.getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  const years = Math.floor(months / 12);
+  return `${years}y ago`;
+}
+
+async function loadFollowedUpdates() {
+  try {
+    const section = document.getElementById("followedUpdatesSection");
+    const cards = document.getElementById("followedCards");
+    if (!section || !cards) return;
+
+    const mangaUser = localStorage.getItem("manga_user");
+    if (!mangaUser) {
+      section.style.display = "none";
+      return;
+    }
+
+    const user = JSON.parse(mangaUser);
+    const userRes = await fetch(`/api/user/${user.username}`);
+    if (!userRes.ok) {
+      section.style.display = "none";
+      return;
+    }
+
+    const userResult = await userRes.json();
+    const mangaData = userResult?.user?.mangaData || {};
+    const readChapters = userResult?.user?.readChapters || {};
+
+    const favoriteIds = Object.entries(mangaData)
+      .filter(([, data]) => data && data.favorite === true)
+      .map(([id]) => id);
+
+    if (favoriteIds.length === 0) {
+      section.style.display = "none";
+      return;
+    }
+
+    const now = Date.now();
+    const followedData = await Promise.all(
+      favoriteIds.map(async (mangaId) => {
+        try {
+          const response = await fetch(`/api/manga/${mangaId}?chapters=false&_t=${now}`);
+          if (!response.ok) return null;
+          const manga = await response.json();
+          if (!manga || !manga.id) return null;
+
+          const latestChapterNumber = parseChapterNumber(manga.latestChapter);
+          const readInfo = getLatestReadInfo(readChapters[mangaId]);
+          const safeRead = Number.isNaN(readInfo.number) ? 0 : readInfo.number;
+          const chapterDiff = Number.isNaN(latestChapterNumber)
+            ? 0
+            : latestChapterNumber - safeRead;
+          const unreadCount = chapterDiff > 0 ? Math.ceil(chapterDiff) : 0;
+
+          return {
+            mangaId,
+            title: manga.title || mangaId,
+            thumbnail: buildThumbnailSrc(manga) || "",
+            latestChapterLabel: manga.latestChapter || (Number.isNaN(latestChapterNumber) ? "?" : latestChapterNumber.toString()),
+            currentReadLabel: readInfo.label,
+            unreadCount,
+            updatedAt: manga.lastUpdated || null,
+          };
+        } catch (e) {
+          console.error(`[Followed] Failed to load ${mangaId}:`, e);
+          return null;
+        }
+      }),
+    );
+
+    const items = followedData
+      .filter((item) => item !== null)
+      .sort((a, b) => {
+        const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+        const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+        return bTime - aTime;
+      })
+      .slice(0, 20);
+
+    if (items.length === 0) {
+      section.style.display = "none";
+      return;
+    }
+
+    cards.innerHTML = items.map((item) => createFollowedUpdateCard(item)).join("");
+    section.style.display = "block";
+    setupHorizontalNavigation(
+      "#followedScrollContainer",
+      "followedPrevBtn",
+      "followedNextBtn",
+    );
+  } catch (error) {
+    console.error("Error loading followed updates:", error);
+  }
+}
+
+function createFollowedUpdateCard(item) {
+  const fallback = getDefaultCardImage();
+  const updated = formatTimeAgo(item.updatedAt);
+  return `
+    <div class="followed-card" onclick="window.location.href='manga.html?id=${item.mangaId}'">
+      <div class="followed-thumbnail">
+        <img src="${item.thumbnail}" alt="${item.title}" onerror="this.src='${fallback}'">
+        <span class="followed-read-chip">CH ${item.currentReadLabel}</span>
+      </div>
+      <div class="followed-info">
+        <div class="followed-meta">
+          <span>Ch.${item.latestChapterLabel}</span>
+          <span>${updated}</span>
+        </div>
+        <div class="followed-title">${item.title}</div>
+        ${item.unreadCount > 0 ? `<span class="followed-badge">+${item.unreadCount} new</span>` : `<span class="followed-badge">Up to date</span>`}
+      </div>
+    </div>
+  `;
 }
 
 // ===== READING HISTORY =====
@@ -334,6 +580,15 @@ async function loadReadingHistory() {
               chapterId,
               chapterNumber: chapterData.chapterNumber,
               provider: chapterData.provider,
+              pageIndex:
+                typeof chapterData.pageIndex === "number"
+                  ? chapterData.pageIndex
+                  : null,
+              totalPages:
+                typeof chapterData.totalPages === "number"
+                  ? chapterData.totalPages
+                  : null,
+              chapterUrl: chapterData.chapterUrl || null,
             };
           }
         });
@@ -440,7 +695,7 @@ function createHistoryCard(item) {
     <div class="history-card" onclick="window.location.href='${continueUrl}'">
       <div class="history-thumbnail">
         <img src="${item.thumbnail}" alt="${item.title}" 
-             onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22300%22%3E%3Crect fill=%22%23333%22 width=%22200%22 height=%22300%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 fill=%22%23666%22 text-anchor=%22middle%22 dy=%22.3em%22%3ENo Image%3C/text%3E%3C/svg%3E'">
+             onerror="this.src='${getDefaultCardImage()}'">
         <div class="history-overlay">
           <span class="continue-reading">Continue Reading</span>
         </div>
@@ -455,34 +710,56 @@ function createHistoryCard(item) {
 }
 
 function buildContinueReadingUrl(item) {
+  const savedPageIndex =
+    typeof item?.latestChapter?.pageIndex === "number"
+      ? item.latestChapter.pageIndex
+      : null;
+
   // Find the chapter in manga.chapters that matches latestChapter
   const chapter = item.manga.chapters.find(
     (ch) => ch.id === item.latestChapter.chapterId,
   );
 
-  if (!chapter) {
+  if (!chapter && !item?.latestChapter?.chapterUrl) {
     return `manga.html?id=${item.mangaId}`;
   }
 
   // Build reader URL with all necessary parameters
   const params = new URLSearchParams();
-  params.append("url", chapter.url);
+  const chapterUrl = chapter ? chapter.url : item.latestChapter.chapterUrl;
+  params.append("url", chapterUrl);
   params.append("mangaId", item.mangaId);
   params.append(
     "provider",
-    chapter.provider || item.latestChapter.provider || "Unknown",
+    (chapter && chapter.provider) || item.latestChapter.provider || "Unknown",
   );
-  params.append("chapterId", chapter.id);
-  params.append("chapterNumber", chapter.number);
+  params.append(
+    "chapterId",
+    (chapter && chapter.id) || item.latestChapter.chapterId,
+  );
+  params.append(
+    "chapterNumber",
+    (chapter && chapter.number) || item.latestChapter.chapterNumber || "?",
+  );
+  if (savedPageIndex !== null && savedPageIndex >= 0) {
+    params.append("page", String(savedPageIndex + 1));
+  }
 
   return `reader.html?${params.toString()}`;
 }
 
 function setupHistoryNavigation() {
-  const container = document.querySelector(".history-scroll-container");
-  const prevBtn = document.getElementById("historyPrevBtn");
-  const nextBtn = document.getElementById("historyNextBtn");
+  setupHorizontalNavigation(
+    ".reading-history-section .history-scroll-container",
+    "historyPrevBtn",
+    "historyNextBtn",
+  );
+}
 
+function setupHorizontalNavigation(containerSelector, prevBtnId, nextBtnId) {
+  const container = document.querySelector(containerSelector);
+  const prevBtn = document.getElementById(prevBtnId);
+  const nextBtn = document.getElementById(nextBtnId);
   if (!container || !prevBtn || !nextBtn) return;
 
   prevBtn.onclick = () => {

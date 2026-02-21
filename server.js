@@ -8,6 +8,7 @@ const HomepageScraper = require("./scrapers/homepage-scraper");
 const TitleScraper = require("./scrapers/title-scraper");
 const DataManager = require("./utils/data-manager");
 const Manga = require("./models/Manga");
+const { uploadToStorage, getStorageProvider } = require("./utils/storage");
 
 const AutoUpdater = require("./utils/auto-updater");
 const dns = require("dns");
@@ -357,6 +358,129 @@ app.post("/api/sync/chapter", async (req, res) => {
   }
 });
 
+// Sync all manga thumbnails to selected storage provider
+app.post("/api/sync/thumbnails", async (req, res) => {
+  try {
+    const provider = getStorageProvider();
+    if (!provider) {
+      return res.status(400).json({
+        success: false,
+        error: "No storage provider configured",
+      });
+    }
+
+    const force = req.body?.force === true;
+    const batchSize = Math.max(
+      1,
+      Number(process.env.THUMBNAIL_SYNC_BATCH_SIZE || 10),
+    );
+    const mangas = await Manga.find(
+      { thumbnail: { $exists: true, $ne: "" } },
+      "mangaId thumbnail",
+    ).lean();
+
+    const knownProviderPatterns = [
+      "imagekit.io",
+      "ibb.co",
+      "freeimage.host",
+      "iili.io",
+    ];
+    const candidates = force
+      ? mangas
+      : mangas.filter((m) => {
+          const thumb = (m.thumbnail || "").toLowerCase();
+          return !knownProviderPatterns.some((d) => thumb.includes(d));
+        });
+
+    let synced = 0;
+    let failed = 0;
+    let skipped = mangas.length - candidates.length;
+
+    for (let i = 0; i < candidates.length; i += batchSize) {
+      const batch = candidates.slice(i, i + batchSize);
+      const results = await Promise.all(
+        batch.map(async (manga) => {
+          try {
+            const sourceUrl = manga.thumbnail;
+            const extMatch = sourceUrl.match(/\.(webp|jpg|jpeg|png|gif)(\?|$)/i);
+            const ext = extMatch ? extMatch[1].toLowerCase() : "jpg";
+            const fileName = `thumb-${manga.mangaId}.${ext}`;
+            const folderPath = `/thumbnails/${manga.mangaId}/`;
+            const uploadedUrl = await uploadToStorage(
+              sourceUrl,
+              fileName,
+              folderPath,
+              provider,
+            );
+
+            if (!uploadedUrl || uploadedUrl === sourceUrl) {
+              failed++;
+              return;
+            }
+
+            await Manga.updateOne(
+              { mangaId: manga.mangaId },
+              { $set: { thumbnail: uploadedUrl, lastUpdated: new Date() } },
+            );
+            synced++;
+          } catch (_) {
+            failed++;
+          }
+        }),
+      );
+      void results;
+    }
+
+    console.log(
+      `[ThumbSync] provider=${provider} total=${mangas.length} processed=${candidates.length} synced=${synced} failed=${failed} skipped=${skipped}`,
+    );
+
+    res.json({
+      success: true,
+      provider,
+      total: mangas.length,
+      processed: candidates.length,
+      synced,
+      failed,
+      skipped,
+      message: `Synced ${synced} thumbnails to ${provider}`,
+    });
+  } catch (error) {
+    console.error("Thumbnail sync error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Toggle refetch flag used by auto-updater
+app.post("/api/manga/:id/refetch", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { enabled } = req.body || {};
+
+    if (typeof enabled !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        error: "enabled (boolean) is required",
+      });
+    }
+
+    const updated = await Manga.findOneAndUpdate(
+      { mangaId: id },
+      { $set: { refetchEnabled: enabled, lastUpdated: new Date() } },
+      { new: true },
+    ).lean();
+
+    if (!updated) {
+      return res.status(404).json({ success: false, error: "Manga not found" });
+    }
+
+    res.json({ success: true, mangaId: id, refetchEnabled: !!updated.refetchEnabled });
+  } catch (error) {
+    console.error("Refetch toggle error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ===== SERVER-SIDE BATCH SYNC (runs in background, survives page reload) =====
 
 // In-memory job store  { jobId -> job }
@@ -456,7 +580,16 @@ app.get("/api/sync/batch/status/:jobId", (req, res) => {
 // Mark chapter as read
 app.post("/api/user/read-chapter", async (req, res) => {
   try {
-    const { username, mangaId, chapterId, chapterNumber, provider } = req.body;
+    const {
+      username,
+      mangaId,
+      chapterId,
+      chapterNumber,
+      provider,
+      pageIndex,
+      totalPages,
+      chapterUrl,
+    } = req.body;
 
     if (!username || !mangaId || !chapterId) {
       return res.status(400).json({
@@ -471,6 +604,9 @@ app.post("/api/user/read-chapter", async (req, res) => {
       chapterId,
       chapterNumber,
       provider,
+      pageIndex,
+      totalPages,
+      chapterUrl,
     );
 
     res.json(result);

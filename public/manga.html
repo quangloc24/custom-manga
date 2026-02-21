@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -16,7 +16,7 @@
         <!-- Header -->
         <header class="header">
             <div class="header-content">
-                <a href="/" class="logo">📖 Manga Reader</a>
+                <a href="/" class="logo">Manga Reader</a>
                 <nav class="nav">
                     <a href="/" class="nav-link">Library</a>
                     <a href="reader.html" class="nav-link">Reader</a>
@@ -81,34 +81,36 @@
 
                     <div id="startReadingContainer" class="action-bar">
                         <button id="startReadingBtn" class="start-reading-btn" style="display: none;">
-                            ▶ Start Reading
+                            Start Reading
                         </button>
-                        
+                        <button id="refetchToggleBtn" class="action-btn ghost-btn" title="Include this manga in auto updater">
+                            Refetch: OFF
+                        </button>
                         <button id="scrapeDetailsBtn" class="action-btn ghost-btn">
-                            📥 Update Details
+                            Update Details
                         </button>
                     </div>
 
                      <!-- User Actions (Hidden if not logged in) -->
                      <div id="userActions" class="user-actions" style="display: none;">
-                        <h3>📚 My List</h3>
+                        <h3>My List</h3>
                         
                         <div class="action-row">
                             <button id="favoriteBtn" class="action-btn">
-                                <span id="favIcon">🤍</span> <span>Favorite</span>
+                                <span id="favIcon">Favorite</span> <span>Favorite</span>
                             </button>
                             
                             <select id="statusSelect" class="action-select">
-                                <option value="">📖 Reading Status</option>
-                                <option value="reading">📚 Reading</option>
-                                <option value="completed">✅ Completed</option>
-                                <option value="on_hold">⏸️ On Hold</option>
-                                <option value="dropped">❌ Dropped</option>
-                                <option value="plan_to_read">📌 Plan to Read</option>
+                                <option value="">Reading Status</option>
+                                <option value="reading">Reading</option>
+                                <option value="completed">Completed</option>
+                                <option value="on_hold">On Hold</option>
+                                <option value="dropped">Dropped</option>
+                                <option value="plan_to_read">Plan to Read</option>
                             </select>
 
                             <select id="ratingSelect" class="action-select">
-                                <option value="">⭐ Your Rating</option>
+                                <option value="">Your Rating</option>
                                 <option value="10">(10) Masterpiece</option>
                                 <option value="9">(9) Great</option>
                                 <option value="8">(8) Very Good</option>
@@ -123,13 +125,13 @@
                         </div>
 
                         <div class="notes-group">
-                            <textarea id="userNote" placeholder="✍️ Add your personal notes about this manga..."></textarea>
-                            <button id="saveNoteBtn" class="save-note-btn">💾 Save Note</button>
+                            <textarea id="userNote" placeholder="Add your personal notes about this manga..."></textarea>
+                            <button id="saveNoteBtn" class="save-note-btn">Save Note</button>
                         </div>
 
                          <div class="custom-list-section">
                             <button id="addToListBtn" class="custom-list-btn">
-                                ➕ Add to Custom List
+                                Add to Custom List
                             </button>
                         </div>
                     </div>
@@ -150,12 +152,12 @@
                 </div>
                 <div class="chapters-toolbar">
                     <div class="search-wrapper">
-                        <span class="search-icon">🔍</span>
+                        <span class="search-icon">&#128269;</span>
                         <input type="text" id="chapterSearchInput" placeholder="Go to chap..." class="chapter-search-input">
                     </div>
                     
                     <button id="dlOptionsBtn" class="dl-options-btn">
-                        ☁️ Cloud Sync
+                        Cloud Sync
                     </button>
 
                     <select id="providerFilterSelect" class="provider-filter-select">
@@ -165,7 +167,7 @@
 
                 <div class="chapters-header">
                     <div class="col-chapter" id="sortChapterBtn" style="cursor: pointer;">
-                        <span>↓ Chapter</span>
+                        <span>Chapter</span>
                     </div>
                     <div class="col-provider">Provider</div>
                     <div class="col-updated">Updated</div>
@@ -180,7 +182,7 @@
 
         <!-- Footer -->
         <footer class="footer">
-            <p><a href="/">← Back to Library</a></p>
+            <p><a href="/">Back to Library</a></p>
         </footer>
     </div>
 
@@ -188,16 +190,16 @@
     <div id="listModal" class="list-modal-overlay">
         <div class="list-modal">
             <div class="list-modal-header">
-                <h3 class="list-modal-title">📋 Custom Lists</h3>
-                <button class="list-modal-close" id="closeListModal">×</button>
+                <h3 class="list-modal-title">Custom Lists</h3>
+                <button class="list-modal-close" id="closeListModal">x</button>
             </div>
 
             <!-- Create New List -->
             <div class="list-create-section">
-                <h4>✨ Create New List</h4>
+                <h4>Create New List</h4>
                 <div class="list-create-input-group">
                     <input type="text" id="newListInput" class="list-create-input" placeholder="Enter list name..." />
-                    <button id="createListBtn" class="list-create-btn">➕ Create</button>
+                    <button id="createListBtn" class="list-create-btn">Create</button>
                 </div>
             </div>
 
@@ -207,7 +209,7 @@
                 <div id="listItemsContainer" class="list-items">
                     <!-- Lists will be dynamically inserted here -->
                     <div class="empty-state" id="emptyState">
-                        <div class="empty-state-icon">📚</div>
+                        <div class="empty-state-icon">List</div>
                         <p class="empty-state-text">No lists yet. Create your first list above!</p>
                     </div>
                 </div>
@@ -215,7 +217,7 @@
 
             <!-- Modal Actions -->
             <div class="list-modal-actions">
-                <button id="saveListsBtn" class="list-modal-btn list-modal-btn-primary">💾 Save Changes</button>
+                <button id="saveListsBtn" class="list-modal-btn list-modal-btn-primary">Save Changes</button>
                 <button id="cancelListsBtn" class="list-modal-btn list-modal-btn-secondary">Cancel</button>
             </div>
         </div>
@@ -225,8 +227,8 @@
     <div id="downloadModal" class="download-modal-overlay">
         <div class="download-modal">
             <div class="download-modal-header">
-                <h3 class="download-modal-title">☁️ Batch Sync to Cloud</h3>
-                <button class="download-modal-close" id="closeDownloadModal">×</button>
+                <h3 class="download-modal-title">Batch Sync to Cloud</h3>
+                <button class="download-modal-close" id="closeDownloadModal">x</button>
             </div>
             <div class="download-modal-body">
                 <div class="download-form-group">
@@ -276,7 +278,7 @@
     <div id="confirmModal" class="download-modal-overlay" style="z-index: 2000;">
         <div class="download-modal" style="max-width: 400px;">
             <div class="download-modal-header">
-                <h3 class="download-modal-title">⚠️ Confirmation</h3>
+                <h3 class="download-modal-title">Confirmation</h3>
             </div>
             <div class="download-modal-body">
                 <p id="confirmMessage" style="margin-bottom: 20px; line-height: 1.5; color: var(--text-primary);">
@@ -296,3 +298,6 @@
     <script src="js/list-modal.js"></script>
 </body>
 </html>
+
+
+

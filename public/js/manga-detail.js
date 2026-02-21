@@ -21,7 +21,9 @@ const synopsis = document.getElementById("synopsis");
 const chaptersList = document.getElementById("chaptersList");
 const chapterCount = document.getElementById("chapterCount");
 const scrapeDetailsBtn = document.getElementById("scrapeDetailsBtn");
+const refetchToggleBtn = document.getElementById("refetchToggleBtn");
 const providerFilter = document.getElementById("providerFilter");
+let currentRefetchEnabled = false;
 
 // Read chapters tracking
 let readChaptersMap = {}; // { chapterId: true }
@@ -123,6 +125,9 @@ async function markChapterAsRead(chapterId, chapterNumber, provider) {
 // Load manga details on page load
 window.addEventListener("load", loadMangaDetails);
 scrapeDetailsBtn.addEventListener("click", scrapeMangaDetails);
+if (refetchToggleBtn) {
+  refetchToggleBtn.addEventListener("click", toggleRefetchForManga);
+}
 
 // Update chapter times every minute
 setInterval(updateChapterTimes, 60000); // 60 seconds
@@ -196,15 +201,6 @@ async function loadMangaDetails() {
     if (metaResponse.ok) {
       metaManga = await metaResponse.json();
 
-      // If metadata exists but hasn't been fully scraped, trigger auto-scrape
-      if (!metaManga.detailsScraped) {
-        console.log(
-          "Manga metadata exists but not scraped. Triggering auto-scrape...",
-        );
-        await autoScrapeMangaDetails();
-        return;
-      }
-
       // Render basic info immediately
       displayMangaDetails(metaManga, true);
     } else if (metaResponse.status === 404) {
@@ -232,15 +228,6 @@ async function loadMangaDetails() {
     }
 
     const manga = await response.json();
-
-    // Check if we have details
-    if (!manga.details || !manga.detailsScraped) {
-      console.log(
-        "Manga details not marked as scraped, triggering auto-scrape...",
-      );
-      await autoScrapeMangaDetails();
-      return;
-    }
 
     // RENDER IMMEDIATELY (without status)
     // This solves the "late" appearance. Buttons will show as "Download" initially.
@@ -397,6 +384,8 @@ async function displayMangaDetails(manga, isLiteVersion = false) {
   thumbnail.src = manga.thumbnail;
   thumbnail.alt = manga.title;
   mangaTitle.textContent = manga.title;
+  currentRefetchEnabled = !!manga.refetchEnabled;
+  renderRefetchToggle();
 
   // Alt titles - display all of them on separate lines
   if (manga.altTitles && manga.altTitles.length > 0) {
@@ -490,6 +479,52 @@ async function displayMangaDetails(manga, isLiteVersion = false) {
     } else {
       startReadingBtn.style.display = "none";
     }
+  }
+}
+
+function renderRefetchToggle() {
+  if (!refetchToggleBtn) return;
+
+  refetchToggleBtn.textContent = currentRefetchEnabled
+    ? "Refetch: ON"
+    : "Refetch: OFF";
+  if (currentRefetchEnabled) {
+    refetchToggleBtn.classList.add("active");
+  } else {
+    refetchToggleBtn.classList.remove("active");
+  }
+}
+
+async function toggleRefetchForManga() {
+  if (!mangaId || !refetchToggleBtn) return;
+
+  const nextValue = !currentRefetchEnabled;
+  refetchToggleBtn.disabled = true;
+
+  try {
+    const response = await fetch(`/api/manga/${mangaId}/refetch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: nextValue }),
+    });
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || "Failed to update refetch flag");
+    }
+
+    currentRefetchEnabled = !!result.refetchEnabled;
+    renderRefetchToggle();
+    toast.success(
+      currentRefetchEnabled
+        ? "Auto updater enabled for this manga"
+        : "Auto updater disabled for this manga",
+    );
+  } catch (error) {
+    console.error("Refetch toggle error:", error);
+    toast.error(error.message || "Failed to update refetch flag");
+  } finally {
+    refetchToggleBtn.disabled = false;
   }
 }
 

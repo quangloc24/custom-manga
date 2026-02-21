@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -10,10 +10,9 @@
 </head>
 <body>
     <div class="container">
-        <!-- Header -->
         <header class="header">
             <div class="header-content">
-                <a href="/" class="logo">📖 Manga Reader</a>
+                <a href="/" class="logo">Manga Reader</a>
                 <nav class="nav">
                     <a href="/" class="nav-link active">Library</a>
                     <a href="reader.html" class="nav-link">Reader</a>
@@ -21,63 +20,69 @@
             </div>
         </header>
 
-        <!-- Search and Actions -->
         <div class="actions-bar">
             <div class="search-box">
                 <input type="text" id="searchInput" placeholder="Search manga..." class="search-input">
-                <button id="searchBtn" class="search-btn">🔍</button>
+                <button id="searchBtn" class="search-btn">Search</button>
             </div>
             <div class="add-manga-box">
                 <input type="text" id="mangaUrlInput" placeholder="Paste manga URL" class="manga-url-input">
                 <button id="addMangaBtn" class="action-btn">
-                    <span>➕ Add Manga</span>
+                    <span>Add Manga</span>
                 </button>
             </div>
-            <button id="scrapeBtn" class="action-btn">
-                <span>📥 Scrape Homepage</span>
-            </button>
+            <div class="sync-actions-stack">
+                <button id="scrapeBtn" class="action-btn">
+                    <span>Scrape Homepage</span>
+                </button>
+                <button id="syncThumbsBtn" class="action-btn">
+                    <span>Sync Thumbnails</span>
+                </button>
+            </div>
         </div>
 
-        <!-- Loading State -->
         <div class="loading-container" id="loadingContainer" style="display: none;">
             <div class="loading-spinner"></div>
             <p class="loading-text">Loading manga library...</p>
         </div>
 
-        <!-- Empty State -->
         <div class="empty-state" id="emptyState" style="display: none;">
-            <div class="empty-icon">📚</div>
+            <div class="empty-icon">No Data</div>
             <h2>No Manga in Library</h2>
             <p>Click "Scrape Homepage" to populate your library</p>
         </div>
 
-        <!-- Reading History Section -->
+        <div class="followed-updates-section" id="followedUpdatesSection" style="display: none;">
+            <div class="section-header">
+                <h2 class="section-title">New Chapters from Followed Manga</h2>
+                <div class="history-nav-buttons">
+                    <button class="history-nav-btn" id="followedPrevBtn">&lsaquo;</button>
+                    <button class="history-nav-btn" id="followedNextBtn">&rsaquo;</button>
+                </div>
+            </div>
+            <div class="history-scroll-container" id="followedScrollContainer">
+                <div class="followed-cards" id="followedCards"></div>
+            </div>
+        </div>
+
         <div class="reading-history-section" id="readingHistorySection" style="display: none;">
             <div class="section-header">
-                <h2 class="section-title">📖 Reading History</h2>
+                <h2 class="section-title">Reading History</h2>
                 <div class="history-nav-buttons">
-                    <button class="history-nav-btn" id="historyPrevBtn">‹</button>
-                    <button class="history-nav-btn" id="historyNextBtn">›</button>
+                    <button class="history-nav-btn" id="historyPrevBtn">&lsaquo;</button>
+                    <button class="history-nav-btn" id="historyNextBtn">&rsaquo;</button>
                 </div>
             </div>
             <div class="history-scroll-container">
                 <div class="history-cards" id="historyCards">
-                    <!-- History cards will be inserted here -->
                 </div>
             </div>
         </div>
 
-        <!-- Manga Grid -->
-        <div class="manga-grid" id="mangaGrid">
-            <!-- Manga cards will be inserted here -->
-        </div>
+        <div class="manga-grid" id="mangaGrid"></div>
 
-        <!-- Pagination -->
-        <div class="pagination-container" id="paginationContainer" style="display: none;">
-            <!-- Pagination buttons will be inserted here -->
-        </div>
+        <div class="pagination-container" id="paginationContainer" style="display: none;"></div>
 
-        <!-- Footer -->
         <footer class="footer">
             <p>Private Manga Reader • <span id="mangaCount">0</span> manga in library</p>
         </footer>
