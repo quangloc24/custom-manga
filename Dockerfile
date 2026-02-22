@@ -64,6 +64,7 @@ RUN if [ -f package-lock.json ]; then \
     fi
 
 COPY . .
+RUN npx prisma generate
 
 # Run as non-root user with UID in 10000-20000 range (Choreo policy).
 # Keep USER as a hardcoded numeric literal so static scanners can detect it.
