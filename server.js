@@ -7,7 +7,7 @@ const MangaScraper = require("./scraper-cheerio"); // Using Cheerio for better c
 const HomepageScraper = require("./scrapers/homepage-scraper");
 const TitleScraper = require("./scrapers/title-scraper");
 const DataManager = require("./utils/data-manager");
-const Manga = require("./models/Manga");
+const prisma = require("./utils/prisma");
 const { uploadToStorage, getStorageProvider } = require("./utils/storage");
 
 const AutoUpdater = require("./utils/auto-updater");
@@ -16,12 +16,26 @@ const cookieManager = require('./utils/cookie-manager');
 dns.setDefaultResultOrder("ipv4first");
 dns.setServers(["1.1.1.1"]);
 const app = express();
-const mongoose = require("mongoose");
 const PORT = process.env.PORT || 3000;
+const DATABASE_TYPE = (process.env.DATABASE_TYPE || "prisma").toLowerCase();
+const DATABASE_URI = process.env.DATABASE_URI;
 
 // Connect to MongoDB
-mongoose
-  .connect(process.env.MONGODB_URI)
+if (!DATABASE_URI) {
+  console.error(
+    "Missing database connection string. Set DATABASE_URI.",
+  );
+  process.exit(1);
+}
+
+if (DATABASE_TYPE !== "prisma") {
+  console.warn(
+    `DATABASE_TYPE='${DATABASE_TYPE}' is not supported in this build. Using Prisma.`,
+  );
+}
+
+prisma
+  .$connect()
   .then(() => {
     console.log("✅ Connected to MongoDB");
     return cookieManager.initialize();
@@ -137,7 +151,7 @@ app.get("/api/chapter", async (req, res) => {
       let mangaTitle = null;
       if (mangaId) {
         try {
-          const mangaDoc = await Manga.findOne({ mangaId }).lean();
+          const mangaDoc = await prisma.manga.findUnique({ where: { mangaId } });
           if (mangaDoc && mangaDoc.title) {
             mangaTitle = mangaDoc.title;
           }
@@ -323,7 +337,7 @@ app.post("/api/scrape/manga/:id", async (req, res) => {
   }
 });
 
-// Cloud Sync Chapter (Upload to ImageKit + Save to DB)
+// Cloud Sync Chapter (Upload to selected provider + Save to DB)
 app.post("/api/sync/chapter", async (req, res) => {
   try {
     // We only need the URL because the scraper handles everything else (metadata, uploading, saving)
@@ -374,10 +388,10 @@ app.post("/api/sync/thumbnails", async (req, res) => {
       1,
       Number(process.env.THUMBNAIL_SYNC_BATCH_SIZE || 10),
     );
-    const mangas = await Manga.find(
-      { thumbnail: { $exists: true, $ne: "" } },
-      "mangaId thumbnail",
-    ).lean();
+    const mangas = await prisma.manga.findMany({
+      where: { thumbnail: { not: null } },
+      select: { mangaId: true, thumbnail: true },
+    });
 
     const knownProviderPatterns = [
       "imagekit.io",
@@ -402,6 +416,10 @@ app.post("/api/sync/thumbnails", async (req, res) => {
         batch.map(async (manga) => {
           try {
             const sourceUrl = manga.thumbnail;
+            if (!sourceUrl) {
+              failed++;
+              return;
+            }
             const extMatch = sourceUrl.match(/\.(webp|jpg|jpeg|png|gif)(\?|$)/i);
             const ext = extMatch ? extMatch[1].toLowerCase() : "jpg";
             const fileName = `thumb-${manga.mangaId}.${ext}`;
@@ -418,10 +436,10 @@ app.post("/api/sync/thumbnails", async (req, res) => {
               return;
             }
 
-            await Manga.updateOne(
-              { mangaId: manga.mangaId },
-              { $set: { thumbnail: uploadedUrl, lastUpdated: new Date() } },
-            );
+            await prisma.manga.update({
+              where: { mangaId: manga.mangaId },
+              data: { thumbnail: uploadedUrl, lastUpdated: new Date() },
+            });
             synced++;
           } catch (_) {
             failed++;
@@ -464,11 +482,15 @@ app.post("/api/manga/:id/refetch", async (req, res) => {
       });
     }
 
-    const updated = await Manga.findOneAndUpdate(
-      { mangaId: id },
-      { $set: { refetchEnabled: enabled, lastUpdated: new Date() } },
-      { new: true },
-    ).lean();
+    let updated;
+    try {
+      updated = await prisma.manga.update({
+        where: { mangaId: id },
+        data: { refetchEnabled: enabled, lastUpdated: new Date() },
+      });
+    } catch (_) {
+      updated = null;
+    }
 
     if (!updated) {
       return res.status(404).json({ success: false, error: "Manga not found" });
@@ -678,13 +700,10 @@ app.get("/api/user/:username/lists", async (req, res) => {
   const { username } = req.params;
   const user = await userManager.getUser(username);
   if (user) {
-    // Convert Map to object for JSON
-    const lists = {};
-    if (user.customLists) {
-      for (const [key, value] of user.customLists) {
-        lists[key] = value;
-      }
-    }
+    const lists =
+      user.customLists && typeof user.customLists === "object"
+        ? user.customLists
+        : {};
     res.json({ success: true, lists });
   } else {
     res.status(404).json({ success: false, error: "User not found" });
@@ -746,10 +765,10 @@ app.post("/api/user/list", async (req, res) => {
 app.get("/api/sync/status/:mangaId", async (req, res) => {
   try {
     const { mangaId } = req.params;
-    const chapters = await require("./models/Chapter").find(
-      { mangaId },
-      "chapterId",
-    );
+    const chapters = await prisma.chapter.findMany({
+      where: { mangaId },
+      select: { chapterId: true },
+    });
     // Return array of synced chapter URLs (chapterId in DB stores full URL)
     const syncedUrls = chapters.map((c) => c.chapterId);
     res.json({ success: true, syncedUrls });
@@ -779,6 +798,7 @@ process.on("SIGINT", async () => {
   console.log("\nShutting down gracefully...");
   autoUpdater.stop();
   await scraper.close();
+  await prisma.$disconnect();
   process.exit(0);
 });
 
@@ -786,6 +806,7 @@ process.on("SIGTERM", async () => {
   console.log("\nShutting down gracefully...");
   autoUpdater.stop();
   await scraper.close();
+  await prisma.$disconnect();
   process.exit(0);
 });
 

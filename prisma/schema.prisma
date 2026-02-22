@@ -1,0 +1,59 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URI")
+}
+
+model Manga {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  mangaId        String   @unique
+  title          String
+  altTitles      String[]
+  thumbnail      String?
+  latestChapter  String?
+  lastUpdated    DateTime @default(now())
+  refetchEnabled Boolean  @default(false)
+  details        Json?
+
+  @@map("mangas")
+}
+
+model Chapter {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  mangaId       String
+  chapterId     String   @unique
+  chapterNumber String?
+  provider      String?
+  images        String[]
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  @@map("chapters")
+}
+
+model User {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  username    String   @unique
+  salt        String
+  hash        String
+  joinedAt    DateTime @default(now())
+  mangaData   Json?
+  customLists Json?
+  readChapters Json?
+
+  @@map("users")
+}
+
+model CloudflareCookie {
+  id           String    @id @map("_id")
+  cookies      Json?
+  cookieString String?
+  expiresAt    DateTime?
+  fetchedAt    DateTime  @default(now())
+  updatedAt    DateTime?
+
+  @@map("cloudflarecookies")
+}

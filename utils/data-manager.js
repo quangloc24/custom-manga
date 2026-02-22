@@ -1,30 +1,29 @@
-const Manga = require("../models/Manga");
+const prisma = require("./prisma");
 
 class DataManager {
-  constructor() {
-    // No initialization needed for Mongoose
-  }
-
   // Load manga library with pagination
   async loadLibrary(page = 1, limit = 20) {
     try {
       const skip = (page - 1) * limit;
 
       const [mangas, totalMangas] = await Promise.all([
-        Manga.find({}, "mangaId title thumbnail latestChapter lastUpdated")
-          .sort({ lastUpdated: -1 })
-          .skip(skip)
-          .limit(limit)
-          .lean(),
-        Manga.countDocuments({}),
+        prisma.manga.findMany({
+          select: {
+            mangaId: true,
+            title: true,
+            thumbnail: true,
+            latestChapter: true,
+            lastUpdated: true,
+          },
+          orderBy: { lastUpdated: "desc" },
+          skip,
+          take: limit,
+        }),
+        prisma.manga.count(),
       ]);
 
       return {
-        mangas: mangas.map((m) => ({
-          id: m.mangaId,
-          ...m,
-          _id: undefined,
-        })),
+        mangas: mangas.map((m) => ({ id: m.mangaId, ...m })),
         totalMangas,
         totalPages: Math.ceil(totalMangas / limit),
         currentPage: page,
@@ -43,31 +42,31 @@ class DataManager {
   }
 
   // Save multiple mangas (e.g. from homepage scrape)
-  // Safely upserts: updates shallow info, preserves existing details if present
   async saveLibrary(mangas) {
     if (!mangas || mangas.length === 0) return false;
 
     try {
-      const operations = mangas.map((m) => ({
-        updateOne: {
-          filter: { mangaId: m.id },
-          update: {
-            $set: {
+      await prisma.$transaction(
+        mangas.map((m) =>
+          prisma.manga.upsert({
+            where: { mangaId: m.id },
+            create: {
+              mangaId: m.id,
+              title: m.title,
+              thumbnail: m.thumbnail,
+              latestChapter: m.latestChapter,
+              lastUpdated: new Date(),
+              altTitles: [],
+            },
+            update: {
               title: m.title,
               thumbnail: m.thumbnail,
               latestChapter: m.latestChapter,
               lastUpdated: new Date(),
             },
-            // Only set details if they don't exist (to avoid clearing them)
-            // But wait, if we scrape homepage we don't have details.
-            // So we don't touch the 'details' field at all in $set.
-            // If the document is new, 'details' will be undefined/empty by default schema, which is fine.
-          },
-          upsert: true,
-        },
-      }));
-
-      await Manga.bulkWrite(operations);
+          }),
+        ),
+      );
       console.log(`Bulk saved/updated ${mangas.length} manga from homepage`);
       return true;
     } catch (error) {
@@ -79,27 +78,25 @@ class DataManager {
   // Load manga details
   async loadMangaDetails(mangaId, includeChapters = true) {
     try {
-      let query = Manga.findOne({ mangaId });
+      const manga = await prisma.manga.findUnique({
+        where: { mangaId },
+      });
+      if (!manga) return null;
+
+      const details = (manga.details && typeof manga.details === "object")
+        ? { ...manga.details }
+        : {};
 
       if (!includeChapters) {
-        query = query.select("-details.chapters");
+        delete details.chapters;
       }
 
-      const manga = await query.lean();
-      if (manga) {
-        return {
-          ...manga,
-          // Spread details to top level for frontend (keep existing behavior)
-          ...(manga.details || {}),
-          // Ensure chapters is at least an empty array if excluded/missing
-          chapters:
-            manga.details && manga.details.chapters
-              ? manga.details.chapters
-              : [],
-          id: manga.mangaId,
-        };
-      }
-      return null;
+      return {
+        ...manga,
+        ...details,
+        chapters: Array.isArray(details.chapters) ? details.chapters : [],
+        id: manga.mangaId,
+      };
     } catch (error) {
       console.error(`Error loading manga ${mangaId}:`, error.message);
       return null;
@@ -109,7 +106,7 @@ class DataManager {
   // Get all manga (for auto-updater)
   async getAllManga() {
     try {
-      return await Manga.find({}).lean();
+      return await prisma.manga.findMany();
     } catch (error) {
       console.error("Error getting all manga:", error.message);
       return [];
@@ -119,12 +116,14 @@ class DataManager {
   // Get manga that should be auto-updated (explicitly enabled by refetch toggle)
   async getMangaForAutoUpdate() {
     try {
-      // Only return manga explicitly enabled for refetch and not finished/completed.
-      const mangas = await Manga.find({
-        refetchEnabled: true,
-        "details.status": { $not: /^(Finished|Completed)$/i },
-      }).lean();
-      return mangas;
+      const mangas = await prisma.manga.findMany({
+        where: { refetchEnabled: true },
+      });
+
+      return mangas.filter((m) => {
+        const status = m?.details?.status;
+        return !/^(Finished|Completed)$/i.test(String(status || ""));
+      });
     } catch (error) {
       console.error("Error getting manga for auto-update:", error.message);
       return [];
@@ -134,7 +133,6 @@ class DataManager {
   // Save manga details
   async saveMangaDetails(mangaId, details) {
     try {
-      // Use manga type from scraper, or calculate from language as fallback
       const type =
         details.mangaType ||
         (details.originalLanguage === "Korean"
@@ -145,8 +143,7 @@ class DataManager {
               ? "Manga"
               : "Unknown");
 
-      // Structure data for Mongoose model
-      const updateData = {
+      const payload = {
         title: details.title,
         altTitles: details.altTitles || [],
         thumbnail: details.thumbnail,
@@ -168,12 +165,17 @@ class DataManager {
         },
       };
 
-      await Manga.findOneAndUpdate({ mangaId: mangaId }, updateData, {
-        upsert: true,
-        new: true,
+      await prisma.manga.upsert({
+        where: { mangaId },
+        create: {
+          mangaId,
+          ...payload,
+          refetchEnabled: false,
+        },
+        update: payload,
       });
 
-      console.log(`Saved details for ${mangaId} to MongoDB`);
+      console.log(`Saved details for ${mangaId} to Prisma`);
       return true;
     } catch (error) {
       console.error(`Error saving manga ${mangaId}:`, error.message);
@@ -184,7 +186,9 @@ class DataManager {
   // Get all manga IDs
   async getAllMangaIds() {
     try {
-      const mangas = await Manga.find({}, "mangaId").lean();
+      const mangas = await prisma.manga.findMany({
+        select: { mangaId: true },
+      });
       return mangas.map((m) => m.mangaId);
     } catch (error) {
       console.error("Error getting manga IDs:", error.message);
@@ -192,16 +196,9 @@ class DataManager {
     }
   }
 
-  // Migration from JSON to MongoDB (One-time run)
   async migrateFromJSON() {
-    // This method would read local JSON files and save to MongoDB
-    // Can be implemented if user requests to keep old data.
-    // For now, leaving empty to avoid complex logic dependency without explicit request.
-    console.log(
-      "JSON to MongoDB migration function available but not auto-run.",
-    );
+    console.log("JSON migration helper not auto-run.");
   }
 }
 
 module.exports = DataManager;
-

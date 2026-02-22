@@ -1,6 +1,6 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
-const Chapter = require("./models/Chapter");
+const prisma = require("./utils/prisma");
 const { zencf: cf } = require('zencf');
 const cookieManager = require('./utils/cookie-manager');
 const { getAxiosProxyConfig, buildComixHeaders } = require('./utils/comix-request');
@@ -57,7 +57,9 @@ class MangaScraperCheerio {
       const forceRefresh = options.forceRefresh === true;
       // 1. Check Cache
       if (this.storageProvider && !forceRefresh) {
-        const cachedChapter = await Chapter.findOne({ chapterId: url });
+        const cachedChapter = await prisma.chapter.findUnique({
+          where: { chapterId: url },
+        });
         if (cachedChapter && cachedChapter.images?.length > 0) {
           console.log(
             `✅ Served from Cache: ${cachedChapter.images.length} images`,
@@ -199,18 +201,18 @@ class MangaScraperCheerio {
           };
           const defaultBatchSize =
             this.storageProvider === "imgbb"
-              ? parsePositiveInt(process.env.IMGBB_UPLOAD_BATCH_SIZE, 3)
+              ? parsePositiveInt(process.env.IMGBB_UPLOAD_BATCH_SIZE, 10)
               : this.storageProvider === "freeimage"
                 ? parsePositiveInt(process.env.FREEIMAGE_UPLOAD_BATCH_SIZE, 50)
                 : parsePositiveInt(process.env.STORAGE_UPLOAD_BATCH_SIZE, 20);
           const BATCH_SIZE = Math.max(1, defaultBatchSize);
           const imgbbJitterMin = Math.max(
             0,
-            Number(process.env.IMGBB_UPLOAD_JITTER_MIN_MS || 150),
+            Number(process.env.IMGBB_UPLOAD_JITTER_MIN_MS || 800),
           );
           const imgbbJitterMax = Math.max(
             imgbbJitterMin,
-            Number(process.env.IMGBB_UPLOAD_JITTER_MAX_MS || 500),
+            Number(process.env.IMGBB_UPLOAD_JITTER_MAX_MS || 1300),
           );
           const retryDelayMs = Math.max(
             0,
@@ -287,9 +289,9 @@ class MangaScraperCheerio {
           }
 
           // Save/overwrite chapter cache in DB
-          await Chapter.findOneAndUpdate(
-            { chapterId: url },
-            {
+          await prisma.chapter.upsert({
+            where: { chapterId: url },
+            create: {
               mangaId: mangaSlug,
               chapterId: url,
               chapterNumber: metadata.chapter,
@@ -303,8 +305,20 @@ class MangaScraperCheerio {
               },
               createdAt: new Date(),
             },
-            { upsert: true, new: true, setDefaultsOnInsert: true },
-          );
+            update: {
+              mangaId: mangaSlug,
+              chapterNumber: metadata.chapter,
+              provider: metadata.provider,
+              images: uploadedUrls,
+              metadata: {
+                title: metadata.title,
+                chapter: metadata.chapter,
+                prevChapter: metadata.prevChapter,
+                nextChapter: metadata.nextChapter,
+              },
+              createdAt: new Date(),
+            },
+          });
           console.log(`Saved to DB with ${this.storageProvider} URLs`);
         } catch (e) {
           console.log(`${this.storageProvider} upload/save failed:`, e.message);

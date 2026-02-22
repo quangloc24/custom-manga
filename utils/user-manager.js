@@ -1,33 +1,29 @@
-const User = require("../models/User");
+const prisma = require("./prisma");
 const crypto = require("crypto");
 
 class UserManager {
-  constructor() {
-    // No initialization needed for Mongoose
-  }
-
-  // --- Authentication ---
-
   async register(username, password) {
     try {
-      const existingUser = await User.findOne({ username });
+      const existingUser = await prisma.user.findUnique({ where: { username } });
       if (existingUser) {
         return { success: false, error: "Username already exists" };
       }
 
-      // Simple hashing for MVP (In production, use bcrypt/argon2)
       const salt = crypto.randomBytes(16).toString("hex");
       const hash = crypto
         .pbkdf2Sync(password, salt, 1000, 64, "sha512")
         .toString("hex");
 
-      const newUser = new User({
-        username,
-        salt,
-        hash,
+      const newUser = await prisma.user.create({
+        data: {
+          username,
+          salt,
+          hash,
+          mangaData: {},
+          customLists: {},
+          readChapters: {},
+        },
       });
-
-      await newUser.save();
 
       return {
         success: true,
@@ -41,7 +37,7 @@ class UserManager {
 
   async login(username, password) {
     try {
-      const user = await User.findOne({ username });
+      const user = await prisma.user.findUnique({ where: { username } });
       if (!user) {
         return { success: false, error: "User not found" };
       }
@@ -50,14 +46,14 @@ class UserManager {
         .pbkdf2Sync(password, user.salt, 1000, 64, "sha512")
         .toString("hex");
 
-      if (hash === user.hash) {
-        return {
-          success: true,
-          user: { username: user.username, joinedAt: user.joinedAt },
-        };
-      } else {
+      if (hash !== user.hash) {
         return { success: false, error: "Invalid password" };
       }
+
+      return {
+        success: true,
+        user: { username: user.username, joinedAt: user.joinedAt },
+      };
     } catch (error) {
       console.error("Login error:", error);
       return { success: false, error: "Login failed" };
@@ -66,43 +62,44 @@ class UserManager {
 
   async getUser(username) {
     try {
-      const user = await User.findOne({ username }).select("-salt -hash -__v");
-      return user || null;
+      const user = await prisma.user.findUnique({ where: { username } });
+      if (!user) return null;
+
+      const { salt, hash, ...publicUser } = user;
+      return publicUser;
     } catch (error) {
       console.error("Get user error:", error);
       return null;
     }
   }
 
-  // --- Manga Actions ---
-
-  // Action: 'favorite', 'status', 'rating', 'note'
   async updateUserAction(username, mangaId, actionType, value) {
     try {
-      const user = await User.findOne({ username });
+      const user = await prisma.user.findUnique({ where: { username } });
       if (!user) return { success: false, error: "User not found" };
 
-      // Initialize map entry if not exists (Mongoose Map handling)
-      if (!user.mangaData.has(mangaId)) {
-        user.mangaData.set(mangaId, {});
+      const mangaData =
+        user.mangaData && typeof user.mangaData === "object"
+          ? { ...user.mangaData }
+          : {};
+      if (!mangaData[mangaId]) {
+        mangaData[mangaId] = {};
       }
 
-      const entry = user.mangaData.get(mangaId);
+      const entry = { ...mangaData[mangaId] };
 
       switch (actionType) {
         case "favorite":
           entry.favorite = !!value;
           break;
         case "status":
-          // Value: 'reading', 'completed', 'on_hold', 'dropped', 'plan_to_read'
           entry.status = value;
           break;
         case "rating":
-          // Value: 1-10
           if (value === null) {
-            entry.rating = undefined;
+            delete entry.rating;
           } else {
-            const rating = parseInt(value);
+            const rating = parseInt(value, 10);
             if (rating >= 1 && rating <= 10) entry.rating = rating;
           }
           break;
@@ -114,10 +111,13 @@ class UserManager {
       }
 
       entry.lastUpdated = new Date();
-      // Mongoose doesn't always detect deep changes in Maps
-      user.markModified("mangaData");
+      mangaData[mangaId] = entry;
 
-      await user.save();
+      await prisma.user.update({
+        where: { username },
+        data: { mangaData },
+      });
+
       return { success: true, data: entry };
     } catch (error) {
       console.error("Update action error:", error);
@@ -125,21 +125,22 @@ class UserManager {
     }
   }
 
-  // --- Custom Lists ---
-
   async createList(username, listName) {
     try {
-      const user = await User.findOne({ username });
+      const user = await prisma.user.findUnique({ where: { username } });
       if (!user) return { success: false, error: "User not found" };
 
-      if (user.customLists.has(listName)) {
+      const customLists =
+        user.customLists && typeof user.customLists === "object"
+          ? { ...user.customLists }
+          : {};
+      if (customLists[listName]) {
         return { success: false, error: "List already exists" };
       }
 
-      user.customLists.set(listName, []);
-      await user.save();
-
-      return { success: true, lists: user.customLists };
+      customLists[listName] = [];
+      await prisma.user.update({ where: { username }, data: { customLists } });
+      return { success: true, lists: customLists };
     } catch (error) {
       return { success: false, error: error.message };
     }
@@ -147,15 +148,20 @@ class UserManager {
 
   async deleteList(username, listName) {
     try {
-      const user = await User.findOne({ username });
+      const user = await prisma.user.findUnique({ where: { username } });
       if (!user) return { success: false, error: "User not found" };
 
-      if (user.customLists.has(listName)) {
-        user.customLists.delete(listName);
-        await user.save();
-        return { success: true, lists: user.customLists };
+      const customLists =
+        user.customLists && typeof user.customLists === "object"
+          ? { ...user.customLists }
+          : {};
+      if (!customLists[listName]) {
+        return { success: false, error: "List not found" };
       }
-      return { success: false, error: "List not found" };
+
+      delete customLists[listName];
+      await prisma.user.update({ where: { username }, data: { customLists } });
+      return { success: true, lists: customLists };
     } catch (error) {
       return { success: false, error: error.message };
     }
@@ -163,21 +169,25 @@ class UserManager {
 
   async addToList(username, listName, mangaId) {
     try {
-      const user = await User.findOne({ username });
+      const user = await prisma.user.findUnique({ where: { username } });
       if (!user) return { success: false, error: "User not found" };
 
-      if (!user.customLists.has(listName)) {
+      const customLists =
+        user.customLists && typeof user.customLists === "object"
+          ? { ...user.customLists }
+          : {};
+      if (!Array.isArray(customLists[listName])) {
         return { success: false, error: "List not found" };
       }
 
-      const list = user.customLists.get(listName);
+      const list = [...customLists[listName]];
       if (!list.includes(mangaId)) {
         list.push(mangaId);
-        await user.save();
-        return { success: true, list: list };
+        customLists[listName] = list;
+        await prisma.user.update({ where: { username }, data: { customLists } });
       }
 
-      return { success: true, list: list, message: "Already in list" };
+      return { success: true, list };
     } catch (error) {
       return { success: false, error: error.message };
     }
@@ -185,28 +195,25 @@ class UserManager {
 
   async removeFromList(username, listName, mangaId) {
     try {
-      const user = await User.findOne({ username });
+      const user = await prisma.user.findUnique({ where: { username } });
       if (!user) return { success: false, error: "User not found" };
 
-      if (!user.customLists.has(listName)) {
+      const customLists =
+        user.customLists && typeof user.customLists === "object"
+          ? { ...user.customLists }
+          : {};
+      if (!Array.isArray(customLists[listName])) {
         return { success: false, error: "List not found" };
       }
 
-      const list = user.customLists.get(listName);
-      const index = list.indexOf(mangaId);
-      if (index > -1) {
-        list.splice(index, 1);
-        await user.save();
-        return { success: true, list: list };
-      }
-
-      return { success: true, list: list, message: "NotInList" };
+      const list = customLists[listName].filter((id) => id !== mangaId);
+      customLists[listName] = list;
+      await prisma.user.update({ where: { username }, data: { customLists } });
+      return { success: true, list };
     } catch (error) {
       return { success: false, error: error.message };
     }
   }
-
-  // --- Reading History ---
 
   async markChapterAsRead(
     username,
@@ -219,21 +226,20 @@ class UserManager {
     chapterUrl = null,
   ) {
     try {
-      const user = await User.findOne({ username });
+      const user = await prisma.user.findUnique({ where: { username } });
       if (!user) return { success: false, error: "User not found" };
 
-      // Initialize readChapters structure if needed
-      if (!user.readChapters) {
-        user.readChapters = {};
-      }
-      if (!user.readChapters[mangaId]) {
-        user.readChapters[mangaId] = {};
+      const readChapters =
+        user.readChapters && typeof user.readChapters === "object"
+          ? { ...user.readChapters }
+          : {};
+      if (!readChapters[mangaId] || typeof readChapters[mangaId] !== "object") {
+        readChapters[mangaId] = {};
       }
 
-      const existingEntry = user.readChapters[mangaId][chapterId] || {};
-
-      // Store chapter read data
-      user.readChapters[mangaId][chapterId] = {
+      const mangaChapters = { ...readChapters[mangaId] };
+      const existingEntry = mangaChapters[chapterId] || {};
+      mangaChapters[chapterId] = {
         ...existingEntry,
         chapterNumber: chapterNumber || "?",
         provider: provider || "Unknown",
@@ -251,10 +257,9 @@ class UserManager {
             : existingEntry.chapterUrl,
         timestamp: new Date(),
       };
+      readChapters[mangaId] = mangaChapters;
 
-      user.markModified("readChapters");
-      await user.save();
-
+      await prisma.user.update({ where: { username }, data: { readChapters } });
       return { success: true };
     } catch (error) {
       console.error("Mark chapter as read error:", error);
@@ -264,10 +269,16 @@ class UserManager {
 
   async getReadChapters(username, mangaId) {
     try {
-      const user = await User.findOne({ username }).select("readChapters");
+      const user = await prisma.user.findUnique({
+        where: { username },
+        select: { readChapters: true },
+      });
       if (!user) return { success: false, error: "User not found" };
 
-      const chapters = user.readChapters?.[mangaId] || {};
+      const chapters =
+        user.readChapters && typeof user.readChapters === "object"
+          ? user.readChapters[mangaId] || {}
+          : {};
       return { success: true, chapters };
     } catch (error) {
       console.error("Get read chapters error:", error);
@@ -277,7 +288,10 @@ class UserManager {
 
   async getReadingHistory(username) {
     try {
-      const user = await User.findOne({ username }).select("readChapters");
+      const user = await prisma.user.findUnique({
+        where: { username },
+        select: { readChapters: true },
+      });
       if (!user) return { success: false, error: "User not found" };
 
       return { success: true, readChapters: user.readChapters || {} };
