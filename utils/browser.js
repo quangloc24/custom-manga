@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Shared puppeteer-stealth browser instance.
  * All scrapers should use getBrowser() from this module.
  */
@@ -11,6 +11,17 @@ puppeteerExtra.use(StealthPlugin());
 let browserInstance = null;
 // Try to find Chromium/Chrome executable on the system (Linux VPS)
 function findChromiumPath() {
+  // Prefer explicit path from environment (useful on PaaS like Leapcell).
+  const envPath = process.env.PUPPETEER_EXECUTABLE_PATH;
+  if (envPath && envPath.trim()) {
+    if (fs.existsSync(envPath)) {
+      console.log(`[Browser] Using PUPPETEER_EXECUTABLE_PATH: ${envPath}`);
+      return envPath;
+    }
+    console.warn(
+      `[Browser] PUPPETEER_EXECUTABLE_PATH is set but not found: ${envPath}`,
+    );
+  }
   const candidates = [
     // Windows
     "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
@@ -130,3 +141,4 @@ async function closeBrowser() {
 }
 
 module.exports = { getBrowser, closeBrowser };
+
