@@ -191,16 +191,19 @@ class MangaScraperCheerio {
             .replace(/^-+|-+$/g, "");
 
           // Concurrent uploads by configurable batch size.
+          const parsePositiveInt = (raw, fallback) => {
+            const parsed = Number(raw);
+            return Number.isFinite(parsed) && parsed > 0
+              ? Math.floor(parsed)
+              : fallback;
+          };
           const defaultBatchSize =
             this.storageProvider === "imgbb"
-              ? Number(process.env.IMGBB_UPLOAD_BATCH_SIZE || 3)
+              ? parsePositiveInt(process.env.IMGBB_UPLOAD_BATCH_SIZE, 3)
               : this.storageProvider === "freeimage"
-                ? Number(process.env.FREEIMAGE_UPLOAD_BATCH_SIZE || 50)
-              : Number(process.env.STORAGE_UPLOAD_BATCH_SIZE || 20);
-          const BATCH_SIZE = Math.max(
-            1,
-            defaultBatchSize,
-          );
+                ? parsePositiveInt(process.env.FREEIMAGE_UPLOAD_BATCH_SIZE, 50)
+                : parsePositiveInt(process.env.STORAGE_UPLOAD_BATCH_SIZE, 20);
+          const BATCH_SIZE = Math.max(1, defaultBatchSize);
           const imgbbJitterMin = Math.max(
             0,
             Number(process.env.IMGBB_UPLOAD_JITTER_MIN_MS || 150),

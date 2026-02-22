@@ -66,6 +66,12 @@ async function getBrowser() {
       "--no-first-run",
       "--no-zygote",
       "--disable-extensions",
+      "--disable-crash-reporter",
+      "--disable-breakpad",
+      "--noerrdialogs",
+      "--user-data-dir=/tmp/chrome-user-data",
+      "--data-path=/tmp/chrome-data",
+      "--disk-cache-dir=/tmp/chrome-cache",
     ],
   };
 

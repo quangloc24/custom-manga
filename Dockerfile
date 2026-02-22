@@ -61,7 +61,8 @@ COPY . .
 # Keep USER as a hardcoded numeric literal so static scanners can detect it.
 RUN groupadd -g 10014 appgroup \
   && useradd -u 10014 -g 10014 -m -s /usr/sbin/nologin appuser \
-  && chown -R 10014:10014 /app
+  && mkdir -p /tmp/chrome-user-data /tmp/chrome-data /tmp/chrome-cache \
+  && chown -R 10014:10014 /app /tmp/chrome-user-data /tmp/chrome-data /tmp/chrome-cache
 ENV USER=10014
 USER 10014
 
