@@ -51,6 +51,10 @@ WORKDIR /app
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
 ENV NODE_ENV=production
+ENV HOME=/tmp
+ENV XDG_CONFIG_HOME=/tmp/.config
+ENV XDG_CACHE_HOME=/tmp/.cache
+ENV XDG_DATA_HOME=/tmp/.local/share
 
 COPY package*.json ./
 RUN if [ -f package-lock.json ]; then \
@@ -64,9 +68,11 @@ COPY . .
 # Run as non-root user with UID in 10000-20000 range (Choreo policy).
 # Keep USER as a hardcoded numeric literal so static scanners can detect it.
 RUN groupadd -g 10014 appgroup \
-  && useradd -u 10014 -g 10014 -m -s /usr/sbin/nologin appuser \
+  && useradd -u 10014 -g 10014 -M -d /tmp -s /usr/sbin/nologin appuser \
   && mkdir -p /tmp/chrome-user-data /tmp/chrome-data /tmp/chrome-cache \
-  && chown -R 10014:10014 /app /tmp/chrome-user-data /tmp/chrome-data /tmp/chrome-cache
+    /tmp/.config /tmp/.cache /tmp/.local/share/applications \
+  && chown -R 10014:10014 /app /tmp/chrome-user-data /tmp/chrome-data /tmp/chrome-cache \
+    /tmp/.config /tmp/.cache /tmp/.local
 ENV USER=10014
 USER 10014
 
