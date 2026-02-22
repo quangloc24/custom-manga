@@ -57,9 +57,11 @@ RUN if [ -f package-lock.json ]; then \
 
 COPY . .
 
-# Run container as non-root user for platform security policies (e.g. CKV_DOCKER_3)
-RUN chown -R node:node /app
-USER node
+# Run as non-root user with UID in 10000-20000 range (Choreo policy)
+RUN groupadd -g 10014 appgroup \
+  && useradd -u 10014 -g appgroup -m -s /usr/sbin/nologin appuser \
+  && chown -R appuser:appgroup /app
+USER 10014
 
 EXPOSE 3000
 
