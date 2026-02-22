@@ -57,6 +57,10 @@ RUN if [ -f package-lock.json ]; then \
 
 COPY . .
 
+# Run container as non-root user for platform security policies (e.g. CKV_DOCKER_3)
+RUN chown -R node:node /app
+USER node
+
 EXPOSE 3000
 
 ENTRYPOINT ["dumb-init", "--"]
