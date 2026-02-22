@@ -6,8 +6,14 @@ echo "[prepare] Starting Puppeteer/Chromium environment setup"
 # Avoid Puppeteer postinstall downloading bundled browser.
 export PUPPETEER_SKIP_DOWNLOAD=true
 
-# Install npm dependencies first (respects package-lock.json).
-npm ci --omit=dev
+# Install npm dependencies.
+if [ -f package-lock.json ]; then
+  echo "[prepare] package-lock.json found -> npm ci --omit=dev"
+  npm ci --omit=dev
+else
+  echo "[prepare] package-lock.json not found -> npm install --omit=dev"
+  npm install --omit=dev
+fi
 
 # Install Chromium + required libs when apt-get is available.
 if command -v apt-get >/dev/null 2>&1; then
