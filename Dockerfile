@@ -1,9 +1,10 @@
 ﻿FROM node:20-bookworm-slim
 
-# Install Chromium and runtime libs used by Puppeteer
+# Install Google Chrome stable and runtime libs used by Puppeteer.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium \
     ca-certificates \
+    wget \
+    gnupg \
     fonts-liberation \
     libasound2 \
     libatk-bridge2.0-0 \
@@ -36,16 +37,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrender1 \
     libxss1 \
     libxtst6 \
-    wget \
     xdg-utils \
     dumb-init \
+  && wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-linux.gpg \
+  && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-linux.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends google-chrome-stable \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # Prevent Puppeteer from downloading Chromium during npm install
 ENV PUPPETEER_SKIP_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
 ENV NODE_ENV=production
 
 COPY package*.json ./
