@@ -57,10 +57,12 @@ RUN if [ -f package-lock.json ]; then \
 
 COPY . .
 
-# Run as non-root user with UID in 10000-20000 range (Choreo policy)
+# Run as non-root user with UID in 10000-20000 range (Choreo policy).
+# Keep USER as a hardcoded numeric literal so static scanners can detect it.
 RUN groupadd -g 10014 appgroup \
-  && useradd -u 10014 -g appgroup -m -s /usr/sbin/nologin appuser \
-  && chown -R appuser:appgroup /app
+  && useradd -u 10014 -g 10014 -m -s /usr/sbin/nologin appuser \
+  && chown -R 10014:10014 /app
+ENV USER=10014
 USER 10014
 
 EXPOSE 3000
