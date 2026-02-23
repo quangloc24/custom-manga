@@ -1,4 +1,11 @@
 require("dotenv").config();
+
+try {
+  require("./utils/logger");
+} catch (err) {
+  console.warn("Failed to initialize logger:", err.message);
+}
+
 const express = require("express");
 const cors = require("cors");
 const axios = require("axios");

@@ -1,6 +1,11 @@
 const prisma = require("./prisma");
 
 class DataManager {
+  toNullableString(value) {
+    if (value === null || value === undefined) return null;
+    return String(value);
+  }
+
   // Load manga library with pagination
   async loadLibrary(page = 1, limit = 20) {
     try {
@@ -54,14 +59,14 @@ class DataManager {
               mangaId: m.id,
               title: m.title,
               thumbnail: m.thumbnail,
-              latestChapter: m.latestChapter,
+              latestChapter: this.toNullableString(m.latestChapter),
               lastUpdated: new Date(),
               altTitles: [],
             },
             update: {
               title: m.title,
               thumbnail: m.thumbnail,
-              latestChapter: m.latestChapter,
+              latestChapter: this.toNullableString(m.latestChapter),
               lastUpdated: new Date(),
             },
           }),
@@ -147,7 +152,7 @@ class DataManager {
         title: details.title,
         altTitles: details.altTitles || [],
         thumbnail: details.thumbnail,
-        latestChapter: details.latestChapter,
+        latestChapter: this.toNullableString(details.latestChapter),
         lastUpdated: new Date(),
         details: {
           description: details.synopsis || details.description || "",

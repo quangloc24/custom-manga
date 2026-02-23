@@ -563,10 +563,15 @@ async function loadReadingHistory() {
         // Find the latest read chapter
         let latestChapter = null;
         let latestTimestamp = 0;
-        let readCount = 0;
+        const readEntries = [];
 
         Object.entries(chapters).forEach(([chapterId, chapterData]) => {
-          readCount++;
+          readEntries.push({
+            chapterId,
+            chapterNumber: chapterData.chapterNumber,
+            provider: chapterData.provider,
+            timestamp: chapterData.timestamp,
+          });
           // Convert timestamp to number for comparison (handles both ISO strings and numbers)
           const timestamp = chapterData.timestamp
             ? typeof chapterData.timestamp === "string"
@@ -596,7 +601,8 @@ async function loadReadingHistory() {
         return {
           mangaId,
           latestChapter,
-          readCount,
+          readCount: readEntries.length,
+          readEntries,
           timestamp: latestTimestamp,
         };
       },
@@ -663,27 +669,64 @@ async function loadReadingHistory() {
 }
 
 function createHistoryCard(item) {
-  // Find the latest chapter number from all chapters
-  let latestChapterNumber = "?";
-  if (item.manga && item.manga.chapters && item.manga.chapters.length > 0) {
-    // Get the highest chapter number
-    const chapterNumbers = item.manga.chapters
-      .map((ch) => parseFloat(ch.number))
-      .filter((num) => !isNaN(num));
-
-    if (chapterNumbers.length > 0) {
-      latestChapterNumber = Math.max(...chapterNumbers).toString();
-    }
-  }
-
-  const progressPercent =
-    latestChapterNumber !== "?" && item.readCount > 0
-      ? Math.round((item.readCount / parseFloat(latestChapterNumber)) * 100)
-      : 0;
-
   const chapterNumber = item.latestChapter
     ? item.latestChapter.chapterNumber || "?"
     : "?";
+  const normalizeProvider = (v) => String(v || "").trim().toLowerCase();
+  const activeProvider = normalizeProvider(item?.latestChapter?.provider);
+  const allChapters = Array.isArray(item?.manga?.chapters) ? item.manga.chapters : [];
+  const providerChapters = activeProvider
+    ? allChapters.filter(
+        (ch) => normalizeProvider(ch?.provider || "Unknown") === activeProvider,
+      )
+    : allChapters;
+  const chapterPool = providerChapters.length > 0 ? providerChapters : allChapters;
+
+  const chapterPoolIds = new Set(chapterPool.map((ch) => String(ch.id || "")));
+  const chapterPoolNumbers = new Set(
+    chapterPool
+      .map((ch) => parseChapterNumber(ch.number))
+      .filter((num) => !Number.isNaN(num))
+      .map((n) => String(n)),
+  );
+
+  const readEntries = Array.isArray(item?.readEntries) ? item.readEntries : [];
+  const doneSet = new Set();
+  readEntries.forEach((entry) => {
+    if (!entry || !entry.chapterId) return;
+    const entryProvider = normalizeProvider(entry.provider || "Unknown");
+    if (activeProvider && entryProvider !== activeProvider) return;
+
+    const entryId = String(entry.chapterId);
+    const entryNumber = parseChapterNumber(entry.chapterNumber);
+    const inPoolById = chapterPoolIds.has(entryId);
+    const inPoolByNumber =
+      !Number.isNaN(entryNumber) && chapterPoolNumbers.has(String(entryNumber));
+
+    if (inPoolById || inPoolByNumber) {
+      doneSet.add(entryId);
+    }
+  });
+
+  const totalChapterCount = chapterPool.length;
+  const readChapterCount = doneSet.size;
+  const progressPercent =
+    totalChapterCount > 0
+      ? Math.max(
+          0,
+          Math.min(100, Math.round((readChapterCount / totalChapterCount) * 100)),
+        )
+      : 0;
+
+  let latestChapterNumber = "?";
+  const chapterNumbers = chapterPool
+    .map((ch) => parseChapterNumber(ch.number))
+    .filter((num) => !Number.isNaN(num));
+  if (chapterNumbers.length > 0) {
+    latestChapterNumber = Math.max(...chapterNumbers).toString();
+  } else if (totalChapterCount > 0) {
+    latestChapterNumber = String(totalChapterCount);
+  }
 
   // Build continue reading URL
   const continueUrl =
