@@ -11,7 +11,13 @@
       ? String(window.localStorage.getItem("API_BASE_URL") || "").trim()
       : "";
 
-  const selectedBase = baseFromWindow || baseFromStorage || "";
+  function sanitizeBaseValue(value) {
+    if (!value) return "";
+    if (/^%VITE_[A-Z0-9_]+%$/.test(value)) return "";
+    return value;
+  }
+
+  const selectedBase = sanitizeBaseValue(baseFromWindow) || sanitizeBaseValue(baseFromStorage) || "";
   const normalizedBase = selectedBase.replace(/\/+$/, "");
   const originalFetch = window.fetch.bind(window);
 
