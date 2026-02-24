@@ -60,7 +60,7 @@ body {
   margin-bottom: 10px;
 }
 
-.manga-title {
+.header-info .manga-title {
   display: block;
   font-size: 2.8rem;
   font-weight: 700;
@@ -610,3 +610,4 @@ html {
   opacity: 0.5;
   cursor: not-allowed;
 }
+

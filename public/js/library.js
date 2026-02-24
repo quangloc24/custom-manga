@@ -156,8 +156,8 @@ function createMangaCard(manga) {
       </div>
     </div>
     <div class="manga-info">
-      <h3 class="manga-title">${manga.title}</h3>
-      <p class="manga-chapter">Latest: Ch. ${manga.latestChapter || "?"}</p>
+      <h3 class="library-manga-title">${manga.title}</h3>
+      <p class="library-manga-chapter">Latest: Ch. ${manga.latestChapter || "?"}</p>
     </div>
   `;
 
@@ -813,3 +813,4 @@ function setupHorizontalNavigation(containerSelector, prevBtnId, nextBtnId) {
     container.scrollBy({ left: 300, behavior: "smooth" });
   };
 }
+

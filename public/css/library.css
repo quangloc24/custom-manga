@@ -217,7 +217,7 @@
     padding: 15px;
 }
 
-.manga-title {
+.library-manga-title {
     font-size: 1rem;
     font-weight: 600;
     color: var(--text-primary);
@@ -230,7 +230,7 @@
     line-height: 1.4;
 }
 
-.manga-chapter {
+.library-manga-chapter {
     font-size: 0.85rem;
     color: var(--text-secondary);
     margin: 0;
@@ -558,3 +558,4 @@
         display: none; /* Hide nav buttons on mobile, use swipe */
     }
 }
+
