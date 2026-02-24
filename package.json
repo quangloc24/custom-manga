@@ -1,37 +1,15 @@
 {
-  "name": "manga-reader",
+  "name": "manga-frontend",
   "version": "1.0.0",
-  "description": "Private manga reading site with web scraping",
-  "main": "server.js",
+  "description": "Manga frontend app (Vite)",
+  "private": true,
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js",
-    "prisma:generate": "prisma generate"
+    "dev": "vite",
+    "build": "vite build && node scripts/copy-static.cjs",
+    "preview": "vite preview"
   },
-  "keywords": [
-    "manga",
-    "reader",
-    "scraper"
-  ],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
-    "@prisma/client": "6.4.1",
-    "axios": "^1.6.2",
-    "cheerio": "^1.0.0-rc.12",
-    "cors": "^2.8.5",
-    "crypto": "^1.0.1",
-    "dotenv": "^16.3.1",
-    "express": "^4.18.2",
-    "https-proxy-agent": "^7.0.6",
-    "node-cron": "^4.2.1",
-    "prisma": "6.4.1",
-    "puppeteer": "^21.6.1",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2",
-    "sharp": "^0.34.5",
-    "winston": "^3.17.0",
-    "zencf": "^2.0.3"
+    "vite": "^6.2.0"
   }
 }
 

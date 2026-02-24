@@ -1,56 +1,43 @@
-# Manga Reader
+# Manga Frontend (Vite + Vanilla JS)
 
-Private manga reader/scraper focused on `comix.to`, with chapter caching in MongoDB and optional cloud image storage.
+This repository is frontend-only.  
+Backend API is separated (Hono) in `manga-api`.
 
-## Stack
+## Run
 
-- Node.js + Express
-- MongoDB + Prisma
-- Puppeteer (`puppeteer-extra` + stealth plugin)
-- Axios + Cheerio
-- Frontend: vanilla HTML/CSS/JS
-
-## Setup
-
-1. Install dependencies:
+1. Install:
 ```bash
 npm install
 ```
 
-2. Copy env:
+2. Configure API URL:
 ```bash
 copy .env.example .env
 ```
 
-3. Set required env:
-- `DATABASE_TYPE=prisma`
-- `DATABASE_URI=<your mongodb uri>`
-
-4. Generate Prisma client:
-```bash
-npm run prisma:generate
+Set:
+```env
+VITE_API_URL=http://localhost:3000
 ```
 
-5. Start:
+3. Start dev server:
 ```bash
-npm start
+npm run dev
 ```
 
-## Main Env Vars
+4. Build:
+```bash
+npm run build
+```
 
-- App/DB:
-  - `PORT`
-  - `NODE_ENV`
-  - `DATABASE_TYPE`
-  - `DATABASE_URI`
-- Scraping:
-  - `PROXY_URL`
-- Storage:
-  - `STORAGE_PROVIDER=imgbb|freeimage`
-  - `STORAGE_UPLOAD_BATCH_SIZE`
-  - provider-specific keys (`IMGBB_*`, `FREEIMAGE_API_KEY`)
+5. Preview:
+```bash
+npm run preview
+```
 
 ## Notes
 
-- This build is Prisma-only. Mongoose was removed.
-- `DATABASE_TYPE` is kept for your switch flow; current supported value is `prisma`.
+- Existing pages/CSS/JS were kept and served by Vite from `public/`.
+- All frontend `fetch("/api/...")` calls are auto-rerouted to `VITE_API_URL`.
+- In your API project, set CORS to allow frontend origin (example):
+  - `CORS_ORIGIN=http://localhost:5173`
