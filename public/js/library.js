@@ -144,6 +144,8 @@ async function changePage(newPage) {
 
 function createMangaCard(manga) {
   const thumbnailSrc = buildThumbnailSrc(manga);
+  const fullTitle = String(manga.title || "");
+  const safeTitleAttr = escapeHtmlAttribute(fullTitle);
   const card = document.createElement("div");
   card.className = "manga-card";
   card.onclick = () => (window.location.href = `manga.html?id=${manga.id}`);
@@ -156,7 +158,7 @@ function createMangaCard(manga) {
       </div>
     </div>
     <div class="manga-info">
-      <h3 class="library-manga-title">${manga.title}</h3>
+      <h3 class="library-manga-title" title="${safeTitleAttr}">${fullTitle}</h3>
       <p class="library-manga-chapter">Latest: Ch. ${manga.latestChapter || "?"}</p>
     </div>
   `;
@@ -506,6 +508,8 @@ async function loadFollowedUpdates() {
 function createFollowedUpdateCard(item) {
   const fallback = getDefaultCardImage();
   const updated = formatTimeAgo(item.updatedAt);
+  const fullTitle = String(item.title || "");
+  const safeTitleAttr = escapeHtmlAttribute(fullTitle);
   return `
     <div class="followed-card" onclick="window.location.href='manga.html?id=${item.mangaId}'">
       <div class="followed-thumbnail">
@@ -517,7 +521,7 @@ function createFollowedUpdateCard(item) {
           <span>Ch.${item.latestChapterLabel}</span>
           <span>${updated}</span>
         </div>
-        <div class="followed-title">${item.title}</div>
+        <div class="followed-title" title="${safeTitleAttr}">${fullTitle}</div>
         ${item.unreadCount > 0 ? `<span class="followed-badge">+${item.unreadCount} new</span>` : `<span class="followed-badge">Up to date</span>`}
       </div>
     </div>
@@ -669,6 +673,8 @@ async function loadReadingHistory() {
 }
 
 function createHistoryCard(item) {
+  const fullTitle = String(item.title || "");
+  const safeTitleAttr = escapeHtmlAttribute(fullTitle);
   const chapterNumber = item.latestChapter
     ? item.latestChapter.chapterNumber || "?"
     : "?";
@@ -744,7 +750,7 @@ function createHistoryCard(item) {
         </div>
       </div>
       <div class="history-info">
-        <div class="history-title">${item.title}</div>
+        <div class="history-title" title="${safeTitleAttr}">${fullTitle}</div>
         <div class="history-chapter">Ch.${chapterNumber}/${latestChapterNumber}</div>
         ${progressPercent > 0 ? `<div class="history-progress-badge">${progressPercent}%</div>` : ""}
       </div>
@@ -812,5 +818,13 @@ function setupHorizontalNavigation(containerSelector, prevBtnId, nextBtnId) {
   nextBtn.onclick = () => {
     container.scrollBy({ left: 300, behavior: "smooth" });
   };
+}
+
+function escapeHtmlAttribute(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
