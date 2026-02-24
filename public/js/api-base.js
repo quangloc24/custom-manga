@@ -17,16 +17,49 @@
     return value;
   }
 
+  function normalizeBase(value) {
+    if (!value) return "";
+    return String(value).replace(/\/+$/, "");
+  }
+
+  function pickEffectiveBase(rawBase) {
+    if (!rawBase) return "";
+
+    try {
+      const current = new URL(window.location.href);
+      const target = new URL(rawBase, current.origin);
+
+      // Force same-origin proxy mode for mixed-content unsafe combos.
+      if (current.protocol === "https:" && target.protocol === "http:") {
+        return "";
+      }
+
+      const normalizedTarget = normalizeBase(target.href);
+      const sameOriginRoot = normalizeBase(current.origin);
+
+      // If base points to the same origin root, keep /api relative.
+      if (normalizedTarget === sameOriginRoot) {
+        return "";
+      }
+
+      return normalizedTarget;
+    } catch {
+      return "";
+    }
+  }
+
   const selectedBase = sanitizeBaseValue(baseFromWindow) || sanitizeBaseValue(baseFromStorage) || "";
-  const normalizedBase = selectedBase.replace(/\/+$/, "");
+  const normalizedRawBase = normalizeBase(selectedBase);
+  const effectiveBase = pickEffectiveBase(normalizedRawBase);
   const originalFetch = window.fetch.bind(window);
 
-  window.__API_BASE_URL__ = normalizedBase;
+  window.__API_BASE_URL__ = effectiveBase;
   window.__API_HEALTHY__ = false;
+  window.__API_ROUTE_MODE__ = effectiveBase ? "direct" : "proxy";
 
   function buildApiUrl(path) {
-    if (!normalizedBase) return path;
-    return `${normalizedBase}${path}`;
+    if (!effectiveBase) return path;
+    return `${effectiveBase}${path}`;
   }
 
   function extractPathname(input) {
@@ -55,27 +88,27 @@
   }
 
   function resolveApiTarget(input) {
-    if (!normalizedBase) return input;
+    if (!effectiveBase) return input;
 
     if (typeof input === "string" && input.startsWith("/api/")) {
-      return `${normalizedBase}${input}`;
+      return `${effectiveBase}${input}`;
     }
 
     if (input instanceof URL && input.pathname.startsWith("/api/")) {
-      return new URL(`${normalizedBase}${input.pathname}${input.search}`);
+      return new URL(`${effectiveBase}${input.pathname}${input.search}`);
     }
 
     if (typeof Request !== "undefined" && input instanceof Request) {
       const url = input.url || "";
       if (url.startsWith("/api/")) {
-        return `${normalizedBase}${url}`;
+        return `${effectiveBase}${url}`;
       }
 
       if (/^https?:\/\//i.test(url)) {
         try {
           const parsed = new URL(url);
           if (parsed.pathname.startsWith("/api/")) {
-            return `${normalizedBase}${parsed.pathname}${parsed.search}`;
+            return `${effectiveBase}${parsed.pathname}${parsed.search}`;
           }
         } catch {
           return input;
