@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your List - Manga Reader</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="css/library.css">
+  <link rel="stylesheet" href="css/user-library.css">
+  <link rel="stylesheet" href="css/toast.css">
+</head>
+<body data-page-mode="list">
+  <div class="container">
+    <header class="header">
+      <div class="header-content">
+        <a href="/" class="logo">Manga Reader</a>
+        <nav class="nav">
+          <a href="/" class="nav-link">Library</a>
+          <a href="list.html" class="nav-link active">Your List</a>
+          <a href="favorites.html" class="nav-link">Favorites</a>
+          <a href="reader.html" class="nav-link">Reader</a>
+        </nav>
+      </div>
+    </header>
+
+    <section class="user-library-panel">
+      <div class="user-library-top">
+        <h1 class="user-library-title">Your Manga List</h1>
+        <div class="user-library-tools">
+          <input id="userListSearch" class="user-library-search" type="text" placeholder="Search title...">
+          <button id="toggleAdvancedFiltersBtn" class="filter-toggle-btn">Filter</button>
+        </div>
+      </div>
+
+      <div id="advancedFiltersPanel" class="advanced-filters-panel" style="display:none;">
+        <div class="filter-grid">
+          <select id="statusFilter" class="user-filter-select">
+            <option value="all">Folder: All</option>
+            <option value="reading">Reading</option>
+            <option value="completed">Completed</option>
+            <option value="on_hold">On Hold</option>
+            <option value="dropped">Dropped</option>
+            <option value="plan_to_read">Plan to Read</option>
+            <option value="rereading">Re-reading</option>
+          </select>
+          <select id="folderFilter" class="user-filter-select">
+            <option value="all">Release: All</option>
+            <option value="releasing">Releasing</option>
+            <option value="finished">Finished</option>
+            <option value="hiatus">Hiatus</option>
+            <option value="cancelled">Cancelled</option>
+            <option value="unknown">Unknown</option>
+          </select>
+          <select id="listFilter" class="user-filter-select">
+            <option value="all">List: All</option>
+          </select>
+          <select id="sortByFilter" class="user-filter-select">
+            <option value="updated_desc">Sort: Recently Updated</option>
+            <option value="title_asc">Title A-Z</option>
+            <option value="title_desc">Title Z-A</option>
+            <option value="progress_desc">Progress High-Low</option>
+            <option value="progress_asc">Progress Low-High</option>
+          </select>
+          <input id="minChapterFilter" class="user-filter-input" type="number" min="0" step="1" placeholder="Min latest chapter">
+        </div>
+      </div>
+
+      <div class="user-library-table-wrap">
+        <table class="user-library-table">
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Continue</th>
+              <th>Rating</th>
+              <th>Folder</th>
+              <th>Status</th>
+              <th>Updated</th>
+            </tr>
+          </thead>
+          <tbody id="userListTableBody"></tbody>
+        </table>
+      </div>
+
+      <div id="userListEmptyState" class="empty-state" style="display:none;">
+        <h2>No manga found</h2>
+        <p>Try changing filters or add manga to your list first.</p>
+      </div>
+    </section>
+  </div>
+
+  <script>window.__VITE_API_URL__ = "%VITE_API_URL%";</script>
+  <script src="js/api-base.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/toast.js"></script>
+  <script src="js/user-library.js"></script>
+</body>
+</html>

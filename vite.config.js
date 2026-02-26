@@ -25,6 +25,8 @@ module.exports = defineConfig(({ mode }) => {
           manga: path.resolve(__dirname, "public/manga.html"),
           reader: path.resolve(__dirname, "public/reader.html"),
           login: path.resolve(__dirname, "public/login.html"),
+          list: path.resolve(__dirname, "public/list.html"),
+          favorites: path.resolve(__dirname, "public/favorites.html"),
         },
       },
     },

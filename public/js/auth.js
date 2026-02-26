@@ -1,17 +1,16 @@
 class Auth {
   constructor() {
     this.currentUser = null;
-    this.token = null; // In a real app, use JWT. Here we rely on username for MVP/session.
+    this.token = null;
+    this.boundDocumentClick = null;
     this.init();
   }
 
   init() {
-    // Load user from local storage
     const storedUser = localStorage.getItem("manga_user");
     if (storedUser) {
       this.currentUser = JSON.parse(storedUser);
     }
-    // Always update UI (to show Login button if not logged in)
     this.updateUI();
   }
 
@@ -30,10 +29,9 @@ class Auth {
       if (data.success) {
         this.loginUser(data.user);
         return { success: true };
-      } else {
-        return { success: false, error: data.error };
       }
-    } catch (error) {
+      return { success: false, error: data.error };
+    } catch {
       return { success: false, error: "Network error" };
     }
   }
@@ -49,10 +47,9 @@ class Auth {
       if (data.success) {
         this.loginUser(data.user);
         return { success: true };
-      } else {
-        return { success: false, error: data.error };
       }
-    } catch (error) {
+      return { success: false, error: data.error };
+    } catch {
       return { success: false, error: "Network error" };
     }
   }
@@ -76,43 +73,81 @@ class Auth {
     const nav = document.querySelector(".nav");
     if (!nav) return;
 
-    // Check if profile link already exists
-    let profileLink = nav.querySelector(".nav-link-profile");
+    const profileMenu = nav.querySelector(".profile-menu-container");
+    const loginLink = nav.querySelector(".nav-link-login");
 
     if (this.currentUser) {
-      if (!profileLink) {
-        profileLink = document.createElement("a");
-        profileLink.className = "nav-link nav-link-profile";
-        profileLink.href = "#"; // Placeholder, maybe user profile page later
-        profileLink.textContent = `👤 ${this.currentUser.username}`;
-        profileLink.onclick = (e) => {
-          e.preventDefault();
-          if (confirm("Logout?")) {
-            this.logout();
-          }
-        };
-        nav.appendChild(profileLink);
-      } else {
-        profileLink.textContent = `👤 ${this.currentUser.username}`;
-        profileLink.style.display = "inline-block";
-      }
-
-      // Remove Login link if present
-      const loginLink = nav.querySelector(".nav-link-login");
       if (loginLink) loginLink.remove();
+      if (profileMenu) profileMenu.remove();
+      nav.appendChild(this.createProfileMenu());
     } else {
-      // Not logged in
-      if (profileLink) profileLink.remove();
+      if (profileMenu) profileMenu.remove();
+      this.removeOutsideClickHandler();
 
-      let loginLink = nav.querySelector(".nav-link-login");
       if (!loginLink) {
-        loginLink = document.createElement("a");
-        loginLink.className = "nav-link nav-link-login";
-        loginLink.href = "login.html";
-        loginLink.textContent = "Login";
-        nav.appendChild(loginLink);
+        const nextLoginLink = document.createElement("a");
+        nextLoginLink.className = "nav-link nav-link-login";
+        nextLoginLink.href = "login.html";
+        nextLoginLink.textContent = "Login";
+        nav.appendChild(nextLoginLink);
       }
     }
+  }
+
+  createProfileMenu() {
+    const wrapper = document.createElement("div");
+    wrapper.className = "profile-menu-container";
+
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "profile-toggle-btn";
+    toggleBtn.type = "button";
+    toggleBtn.innerHTML = `
+      <span class="profile-avatar">${this.currentUser.username.charAt(0).toUpperCase()}</span>
+      <span class="profile-name">${this.currentUser.username}</span>
+    `;
+
+    const dropdown = document.createElement("div");
+    dropdown.className = "profile-dropdown";
+    dropdown.innerHTML = `
+      <div class="profile-dropdown-header">
+        <div class="profile-dropdown-user">${this.currentUser.username}</div>
+        <div class="profile-dropdown-sub">Personal menu</div>
+      </div>
+      <a class="profile-dropdown-item" href="/list.html">Your List</a>
+      <a class="profile-dropdown-item" href="/favorites.html">Favorited Manga</a>
+      <a class="profile-dropdown-item" href="/#readingHistorySection">History</a>
+      <button class="profile-dropdown-item profile-logout-btn" type="button">Logout</button>
+    `;
+
+    toggleBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      wrapper.classList.toggle("open");
+    });
+
+    dropdown.querySelector(".profile-logout-btn")?.addEventListener("click", () => {
+      this.logout();
+    });
+
+    wrapper.appendChild(toggleBtn);
+    wrapper.appendChild(dropdown);
+    this.setupOutsideClickHandler(wrapper);
+    return wrapper;
+  }
+
+  setupOutsideClickHandler(container) {
+    this.removeOutsideClickHandler();
+    this.boundDocumentClick = (event) => {
+      if (!container.contains(event.target)) {
+        container.classList.remove("open");
+      }
+    };
+    document.addEventListener("click", this.boundDocumentClick);
+  }
+
+  removeOutsideClickHandler() {
+    if (!this.boundDocumentClick) return;
+    document.removeEventListener("click", this.boundDocumentClick);
+    this.boundDocumentClick = null;
   }
 }
 
